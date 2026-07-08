@@ -1,4 +1,4 @@
-import type { DemoUser, Source, SSEEvent, Trace } from '../types'
+import type { DemoUser, SSEEvent } from '../types'
 import { parseSSEChunk } from './sse'
 
 let _token: string | null = localStorage.getItem('groundrag_token')
