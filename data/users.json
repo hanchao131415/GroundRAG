@@ -1,0 +1,7 @@
+{
+  "zhangsan": {"name": "张三", "departments": ["HR"], "role": "员工"},
+  "lisi": {"name": "李四", "departments": ["财务"], "role": "员工"},
+  "wangwu": {"name": "王五", "departments": ["IT"], "role": "员工"},
+  "zhaoliu": {"name": "赵六", "departments": ["行政"], "role": "员工"},
+  "admin": {"name": "管理员", "departments": ["*"], "role": "管理员"}
+}
