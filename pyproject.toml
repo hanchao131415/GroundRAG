@@ -1,0 +1,41 @@
+[project]
+name = "groundrag"
+version = "1.0.0"
+description = "GroundRAG — 企业级 RAG 知识库展示项目：混合检索 + RBAC 权限 + 多级缓存 + 全链路可观测 + React 前端"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "MIT" }
+authors = [{ name = "AI Engineer" }]
+
+dependencies = [
+    "langchain>=0.3.26,<0.4",
+    "langchain-core>=0.3.86,<0.4",
+    "langchain-community>=0.3.27",
+    "langchain-openai>=0.2.14",
+    "langchain-anthropic>=0.3.3",
+    "langchain-huggingface>=0.3.1",
+    "langchain-text-splitters>=0.3.8",
+    "faiss-cpu>=1.7",
+    "rank_bm25>=0.2",
+    "PyMuPDF>=1.24",
+    "python-docx>=1.1",
+    "jieba>=0.42",
+    "sentence-transformers>=3.0",
+    "FlagEmbedding>=1.4",
+    "transformers==4.46.3",
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "langfuse>=4.0",
+    "PyJWT>=2.8",
+    "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9", "pytest-asyncio"]
+dev = ["black", "ruff", "mypy"]
+loadtest = ["locust>=2.20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
