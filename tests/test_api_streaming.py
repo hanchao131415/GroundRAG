@@ -161,3 +161,25 @@ def test_chat_stream_emits_sse_frames():
     assert '"type": "sources"' in body or '"type":"sources"' in body
     assert '"type": "token"' in body or '"type":"token"' in body
     assert "data: [DONE]" in body
+
+
+def test_cache_service_is_thread_safe():
+    """并发 put 不丢条目、不损坏索引（锁保护下）。"""
+    import threading, shutil
+    from pathlib import Path
+    from rag_modules.cache_service import CacheService
+    test_dir = "data/cache_test"
+    if Path(test_dir).exists():
+        shutil.rmtree(test_dir)
+    svc = CacheService(cache_dir=test_dir, embeddings=None)
+
+    def writer(prefix):
+        for i in range(50):
+            svc.put(f"{prefix}{i}", f"ans-{i}")
+
+    threads = [threading.Thread(target=writer, args=(f"u{n}-",)) for n in range(4)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    assert svc.stats()["total"] == 200  # 无锁时竞态会 < 200 或抛错
+    shutil.rmtree(test_dir, ignore_errors=True)
