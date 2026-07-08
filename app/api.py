@@ -97,10 +97,11 @@ class ChatRequest(BaseModel):
     stream: bool = Field(default=False, description="是否流式输出")  # True → 走 SSE 逐字返回
 
 class ChatResponse(BaseModel):
-    """非流式问答的返回（流式走 SSE，不走这个模型）"""
-    answer: str                       # LLM 生成的回答
-    sources: list[str] = []           # 引用来源（当前留空，可扩展为文档名+片段）
-    trace_id: str = ""                # 全链路追踪 ID（可对接 OpenTelemetry）
+    """非流式问答返回。"""
+    answer: str
+    sources: list[dict] = []
+    trace: dict = {}
+    trace_id: str = ""
 
 class SearchRequest(BaseModel):
     """纯检索请求体"""
@@ -241,62 +242,43 @@ def demo_users():
 # 校验签名/过期 → 返回可信 user_id。校验失败它内部会抛 401，请求根本进不到这里。
 # 所以 user_id 是服务端从 token 解出的，不是客户端传的 → 无法伪造。
 async def chat(req: ChatRequest, request: Request, user_id: str = Depends(get_current_user)):
-    """
-    问答接口（异步，支持流式 SSE，需 JWT 认证）。
-
-    整条链路：JWT 取 user_id → 现查该用户可见部门 → 带部门做权限过滤检索 →
-    喂给 LLM 生成回答（流式或一次性）。权限信息全程随调用栈传递，不写单例。
-    """
+    """问答（需 JWT）。流式走 SSE 类型化事件；非流式一次性返回 answer+sources+trace。"""
     rag = get_rag()
-    # user_id 来自 JWT 解码，不是客户端请求体 → 无法伪造
-    # A2 修复：权限现查现用，不写单例 current_user（并发安全）
-    # 现查这个用户能看哪些部门（请求级，每次重新查，避免并发串号）
     deps = _resolve_departments(rag, user_id)
 
     if req.stream:
-        # ===== 流式分支：用 SSE（Server-Sent Events）逐块返回 =====
-        # SSE 协议：响应体是一行行 "data: <内容>\n\n"，浏览器用 EventSource 接收，
-        # 每来一块就渲染一块（像 ChatGPT 打字机效果）。
-        # deps 通过闭包传入 generate()，不读任何单例 → 并发安全。
+        import json, asyncio, threading
         async def generate():
-            try:
-                from rag_modules.generation_integration import GenerationIntegrationModule
-                # ① 查询改写：把口语化问题改成更适合检索的形式（如同义词扩展）
-                rewritten = rag.generation_module.query_rewrite(req.question)
-                # ② 带权限的检索：有部门信息就用 permission_aware_search（只召回
-                #    该用户可见的文档），否则退回普通 hybrid_search（无过滤）
-                if deps:
-                    chunks = rag.retrieval_module.permission_aware_search(rewritten, deps, top_k=rag.config.top_k)
-                else:
-                    chunks = rag.retrieval_module.hybrid_search(rewritten, top_k=rag.config.top_k)
-                # ③ 没检索到任何东西 → 提前结束流（避免把空内容丢给 LLM 瞎编）
-                if not chunks:
-                    yield "data: 知识库中未找到相关内容\n\n"
-                    yield "data: [DONE]\n\n"        # [DONE] 是约定的流结束标记
-                    return
-                # ④ 流式生成：generate_answer_stream 是个生成器，每产出一小段就 yield 出去
-                for piece in rag.generation_module.generate_answer_stream(req.question, chunks):
-                    yield f"data: {piece}\n\n"     # SSE 格式：每条消息以两个换行结尾
-                yield "data: [DONE]\n\n"            # 正常结束
-            except Exception as e:
-                # 生成中途出错也要通过流告知前端，不能让连接悬着
-                yield f"data: [ERROR] {str(e)}\n\n"
-        # StreamingResponse：把上面的 generate() 生成器包装成流式 HTTP 响应
-        # media_type="text/event-stream" 是 SSE 的标准 Content-Type
+            # P1：ask_stream 是同步生成器（含阻塞 LLM/检索/向量化 I/O），放后台线程，
+            # 经 asyncio.Queue + run_coroutine_threadsafe 桥到 async 生成器，
+            # 避免阻塞事件循环（否则并发请求会串行）。ask_stream 自身的异常已封装成 error 事件。
+            q: asyncio.Queue = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+
+            def producer():
+                try:
+                    for event in rag.ask_stream(req.question, user_departments=deps, user_id=user_id):
+                        asyncio.run_coroutine_threadsafe(q.put(event), loop)
+                except Exception as e:  # 线程内未预期异常兜底
+                    asyncio.run_coroutine_threadsafe(q.put({"type": "error", "message": str(e)}), loop)
+                finally:
+                    asyncio.run_coroutine_threadsafe(q.put(None), loop)  # 结束哨兵
+
+            threading.Thread(target=producer, daemon=True).start()
+            while True:
+                event = await q.get()
+                if event is None:
+                    break
+                yield "data: [DONE]\n\n" if event["type"] == "done" \
+                    else f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         return StreamingResponse(generate(), media_type="text/event-stream")
 
-    # ===== 非流式分支：一次性返回完整答案 =====
-    try:
-        # rag.ask 是同步阻塞函数（内部调 LLM 等待完整返回）。
-        # 用 asyncio.to_thread 把它丢到线程池跑，避免阻塞 FastAPI 的事件循环，
-        # 这样其他请求（包括流式的）不会被卡住。
-        answer = await asyncio.to_thread(
-            rag.ask, req.question, stream=False,
-            user_departments=deps, user_id=user_id)   # 权限/身份作为参数传入，不挂单例
-        return ChatResponse(answer=answer or "", sources=[], trace_id="")
-    except Exception as e:
-        logger.error(f"问答失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))  # 500 = 服务端内部错误
+    # 非流式：收集所有事件再组装
+    events = list(rag.ask_stream(req.question, user_departments=deps, user_id=user_id))
+    answer = "".join(e.get("text", "") for e in events if e["type"] == "token")
+    sources = next((e["items"] for e in events if e["type"] == "sources"), [])
+    trace = next((e["trace"] for e in events if e["type"] == "trace"), {})
+    return ChatResponse(answer=answer, sources=sources, trace=trace, trace_id=trace.get("trace_id", ""))
 
 
 # ---- 端点 4/5：纯检索（不调 LLM）----

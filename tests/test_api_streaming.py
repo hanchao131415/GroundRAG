@@ -98,3 +98,66 @@ def test_ask_stream_no_result_refuses():
     assert types[-1] == "done"
     answer = "".join(e["text"] for e in events if e["type"] == "token")
     assert "未找到" in answer
+
+
+def test_chat_non_stream_returns_sources_and_trace():
+    """非流式 /chat 返回真实 sources + trace（不再空）。"""
+    from app import api
+    from main import EnterpriseRAGSystem
+
+    class FakeUserService:
+        users = {"zhangsan": {"name": "张三", "departments": ["HR"], "role": "员工"}}
+        def authenticate(self, uid): return self.users.get(uid)
+        def get_departments(self, uid): return self.users[uid]["departments"]
+
+    class FakeRag(EnterpriseRAGSystem):
+        def __init__(self):
+            self.user_service = FakeUserService()
+            self.config = type("C", (), {"top_k": 3, "jwt_secret": "x"})()
+        def ask_stream(self, question, user_departments=None, user_id=None):
+            yield {"type": "sources", "items": [{"source": "HR/x.md", "page": 1, "department": "HR", "score": 0.9, "preview": "p"}]}
+            yield {"type": "token", "text": "答案"}
+            yield {"type": "trace", "trace": {"trace_id": "abc", "steps": [], "total_ms": 5,
+                                              "tokens": {"prompt": 1, "completion": 1, "total": 2}, "cost_usd": 0.0}}
+            yield {"type": "done"}
+
+    api._rag = FakeRag()
+    client = TestClient(api.app)
+    token = client.post("/auth/login", json={"user_id": "zhangsan"}).json()["access_token"]
+    resp = client.post("/api/v1/chat", json={"question": "q", "stream": False},
+                       headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["answer"] == "答案"
+    assert body["sources"][0]["source"] == "HR/x.md"
+    assert body["trace"]["trace_id"] == "abc"
+    assert body["trace_id"] == "abc"
+
+
+def test_chat_stream_emits_sse_frames():
+    from app import api
+    from main import EnterpriseRAGSystem
+
+    class FakeUserService:
+        users = {"zhangsan": {"name": "张三", "departments": ["HR"], "role": "员工"}}
+        def authenticate(self, uid): return self.users.get(uid)
+        def get_departments(self, uid): return self.users[uid]["departments"]
+    class FakeRag(EnterpriseRAGSystem):
+        def __init__(self):
+            self.user_service = FakeUserService()
+            self.config = type("C", (), {"top_k": 3, "jwt_secret": "x"})()
+        def ask_stream(self, question, user_departments=None, user_id=None):
+            yield {"type": "sources", "items": []}
+            yield {"type": "token", "text": "hi"}
+            yield {"type": "done"}
+
+    api._rag = FakeRag()
+    client = TestClient(api.app)
+    token = client.post("/auth/login", json={"user_id": "zhangsan"}).json()["access_token"]
+    resp = client.post("/api/v1/chat", json={"question": "q", "stream": True},
+                       headers={"Authorization": f"Bearer {token}"})
+    body = resp.text
+    assert "data:" in body
+    assert '"type": "sources"' in body or '"type":"sources"' in body
+    assert '"type": "token"' in body or '"type":"token"' in body
+    assert "data: [DONE]" in body
