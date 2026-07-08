@@ -40,7 +40,7 @@ setup_logging()
 # Depends：FastAPI 依赖注入，用于把"鉴权"做成可复用依赖
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
 # StreamingResponse：把一个"逐块产出数据"的生成器转成 HTTP 流式响应（SSE 用）
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 # BaseModel/Field：Pydantic 数据模型，请求体进来会被自动校验（少传/多传/类型错都会报错）
 from pydantic import BaseModel, Field
 # slowapi：FastAPI 的限流库（基于内存计数，按 IP 分桶）
@@ -325,3 +325,26 @@ def stats(user_id: str = Depends(get_current_user)):
         # 缓存统计（命中率等，反映热度与成本节约）
         "cache": rag.cache.stats() if rag.cache else {},
     }
+
+
+# ---- 前端静态托管（方案 A：FastAPI 服务 web/dist）----
+# 必须放在所有 API 路由之后注册，保证 /api /auth /health 优先匹配。
+from fastapi.staticfiles import StaticFiles
+
+WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+_ASSETS = WEB_DIST / "assets"
+if _ASSETS.exists():
+    app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
+
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    """SPA 路由回退：非 API 路径返回 index.html；dist 未构建时给提示。"""
+    if full_path.startswith(("api/", "auth/", "health", "docs", "openapi", "redoc")):
+        raise HTTPException(status_code=404)
+    index = WEB_DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return HTMLResponse(
+        "<h1>Frontend not built</h1><p>Run: <code>cd web && npm run build</code></p>",
+        status_code=404)
