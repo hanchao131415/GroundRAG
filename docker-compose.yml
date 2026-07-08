@@ -1,0 +1,22 @@
+services:
+  groundrag:
+    build: .
+    container_name: groundrag
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - HF_HUB_OFFLINE=1
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+    volumes:
+      - rag-index:/app/data/vector_index
+      - rag-cache:/app/data/cache
+      - rag-traces:/app/data/traces
+    restart: unless-stopped
+
+volumes:
+  rag-index:
+  rag-cache:
+  rag-traces:

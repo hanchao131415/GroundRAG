@@ -1,0 +1,42 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env secrets
+.env
+.env.local
+
+# Frontend (built inside container)
+web/node_modules/
+web/dist/
+
+# Runtime data (created at container runtime)
+data/cache/
+data/traces/
+data/vector_index/
+*.pkl
+*.faiss
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+.pytest_cache/
+
+# SDD
+.superpowers/
+
+# Internal docs
+docs/
