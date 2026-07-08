@@ -1,0 +1,15 @@
+{"question": "那个年假是怎么说的来着，满3年能休几天啊", "ground_truth": "工作满3年年假10天", "source_doc": "HR/年假管理制度.md", "fuzzy_of": "工作满3年年假几天"}
+{"question": "年假几天啊，我工作三年了", "ground_truth": "工作满3年年假10天", "source_doc": "HR/年假管理制度.md", "fuzzy_of": "工作满3年年假几天"}
+{"question": "我想问一下那个请假的事情，就是那个年假", "ground_truth": "年假需提前7个工作日申请", "source_doc": "HR/年假管理制度.md", "fuzzy_of": "年假申请流程"}
+{"question": "出差的话住酒店能报销多少", "ground_truth": "一线城市上限500元", "source_doc": "财务/差旅报销制度.md", "fuzzy_of": "住宿费上限"}
+{"question": "去北京出差报销标准是什么", "ground_truth": "一线城市上限500元", "source_doc": "财务/差旅报销制度.md", "fuzzy_of": "住宿费上限"}
+{"question": "报销咋整的", "ground_truth": "出差后5工作日内提交报销单", "source_doc": "财务/差旅报销制度.md", "fuzzy_of": "报销流程"}
+{"question": "密码那个，多久得换一回", "ground_truth": "90天更换一次", "source_doc": "IT/信息安全管理规定.md", "fuzzy_of": "密码更换周期"}
+{"question": "那个坐速费，就是住酒店的那个，标准多少来着", "ground_truth": "一线城市上限500元", "source_doc": "财务/差旅报销制度.md", "fuzzy_of": "住宿费上限"}
+{"question": "请假要提前多久说", "ground_truth": "年假需提前7个工作日申请", "source_doc": "HR/年假管理制度.md", "fuzzy_of": "年假提前申请"}
+{"question": "我请病假的话工资怎么算", "ground_truth": "病假按当地最低工资80%发放", "source_doc": "HR/考勤管理制度.md", "fuzzy_of": "病假工资"}
+{"question": "迟到多少分钟算旷工", "ground_truth": "迟到超60分钟按旷工半天处理", "source_doc": "HR/考勤管理制度.md", "fuzzy_of": "迟到处理"}
+{"question": "打印纸每个月能领几箱", "ground_truth": "每个部门每月2箱", "source_doc": "行政/办公用品领用管理办法.md", "fuzzy_of": "打印纸配额"}
+{"question": "数据安全那个，不对，信息安全那个规定在哪", "ground_truth": "密码长度不少于8位", "source_doc": "IT/信息安全管理规定.md", "fuzzy_of": "信息安全规定"}
+{"question": "公积金公司给交多少", "ground_truth": "公司缴纳12%", "source_doc": "HR/薪酬福利管理办法.md", "fuzzy_of": "公积金比例"}
+{"question": "工资条里那个通讯补贴多少", "ground_truth": "通讯补贴50元每天", "source_doc": "财务/差旅报销制度.md", "fuzzy_of": "通讯补贴"}

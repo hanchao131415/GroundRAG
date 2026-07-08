@@ -1,0 +1,542 @@
+{
+  "summary": {
+    "context_recall": 1.0,
+    "faithfulness": 1.0,
+    "answer_relevancy": 1.0
+  },
+  "details": [
+    {
+      "question": "工作满3年年假几天？",
+      "ground_truth": "工作满3年不满5年年假10天",
+      "answer": "工作满3年不满5年的年假为10天 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "工作满1年年假几天？",
+      "ground_truth": "工作满1年不满3年年假5天",
+      "answer": "工作满1年（不满3年），年假为5天 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "工作满10年年假几天？",
+      "ground_truth": "工作满10年以上年假20天",
+      "answer": "工作满10年以上，年假为20天 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "年假需要提前几天申请？",
+      "ground_truth": "年假需提前7个工作日申请",
+      "answer": "年假需提前7个工作日申请 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "连续休假超过几天需要总监审批？",
+      "ground_truth": "连续休假超过5天需部门总监审批",
+      "answer": "连续休假超过5天需部门总监审批 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "未休完的年假怎么处理？",
+      "ground_truth": "未休完的年假年底清零不可累计到下一年",
+      "answer": "未休完的年假在年底清零，不可累计到下一年 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "年假申请流程是什么？",
+      "ground_truth": "OA系统提交申请，直属主管审批，HR备案",
+      "answer": "年假申请流程如下：\n1. 员工通过OA系统提交年假申请 [文档1]\n2. 直属主管审批 [文档1]\n3. HR部门备案 [文档1]\n\n此外，年假需提前7个工作日申请 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "紧急情况能补申请年假吗？",
+      "ground_truth": "紧急情况可事后补申请但需提供说明",
+      "answer": "紧急情况可以事后补申请年假，但需提供说明 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/年假管理制度.md",
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "标准工作时间是几点到几点？",
+      "ground_truth": "标准工时周一至周五9点到18点，午休12点到13点",
+      "answer": "标准工作时间为周一至周五 9:00-18:00 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "弹性工时核心工作时间是什么？",
+      "ground_truth": "弹性工时核心工作时间为10点到16点前后可弹性1小时",
+      "answer": "弹性工时的核心工作时间为10:00-16:00 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "忘记打卡怎么处理？",
+      "ground_truth": "每月有3次补签机会，超过按迟到处理",
+      "answer": "忘记打卡每月有3次补签机会，超过3次按迟到处理 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "迟到超过60分钟怎么算？",
+      "ground_truth": "迟到超过60分钟按旷工半天处理",
+      "answer": "迟到超过60分钟按旷工半天处理 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "月累计迟到几次扣全勤奖？",
+      "ground_truth": "月累计迟到3次扣当月全勤奖",
+      "answer": "月累计迟到3次扣当月全勤奖 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "病假工资怎么发？",
+      "ground_truth": "病假凭医院证明按当地最低工资80%发放",
+      "answer": "病假凭医院证明，按当地最低工资80%发放 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "加班调休怎么算？",
+      "ground_truth": "平日加班按1.5倍调休，法定节假日按3倍调休",
+      "answer": "加班需主管审批，平日按1.5倍调休，法定节假日按3倍调休 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "HR/考勤管理制度.md"
+      ]
+    },
+    {
+      "question": "住宿费一线城市报销上限多少？",
+      "ground_truth": "一线城市住宿费上限500元每晚",
+      "answer": "住宿费一线城市报销上限为500元/晚 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "住宿费其他城市报销上限多少？",
+      "ground_truth": "其他城市住宿费上限400元每晚",
+      "answer": "住宿费其他城市报销上限为400元/晚 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "餐饮补贴每天多少？",
+      "ground_truth": "餐饮补贴100元每天无需发票",
+      "answer": "餐饮补贴为100元/天（无需发票） [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "机票报销标准是什么？",
+      "ground_truth": "仅限经济舱机票凭票报销",
+      "answer": "机票报销标准为经济舱机票 [文档1]。此外，报销时需提供行程单和登机牌 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "机票报销需要什么凭证？",
+      "ground_truth": "机票报销需提供行程单和登机牌",
+      "answer": "机票报销需要提供行程单和登机牌 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "报销单据提交期限是几天？",
+      "ground_truth": "出差结束后5个工作日内提交报销单单据30天内提交",
+      "answer": "报销单据需在出差结束后30天内提交 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "通讯补贴每天多少？",
+      "ground_truth": "通讯补贴50元每天无需发票",
+      "answer": "通讯补贴为50元/天（无需发票） [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "住宿费超标怎么处理？",
+      "ground_truth": "住宿费超过标准的部分由个人承担",
+      "answer": "住宿费超过标准的部分由个人承担 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "高铁报销标准是什么？",
+      "ground_truth": "高铁二等座凭票报销",
+      "answer": "高铁报销标准为高铁二等座 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "财务/差旅报销制度.md"
+      ]
+    },
+    {
+      "question": "密码长度要求多少位？",
+      "ground_truth": "系统密码长度不少于8位必须包含大小写字母数字特殊字符",
+      "answer": "系统密码长度要求不少于8位 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "密码多久更换一次？",
+      "ground_truth": "密码每90天强制更换一次",
+      "answer": "密码每90天强制更换一次 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "数据分为哪几个等级？",
+      "ground_truth": "数据分为公开内部机密绝密四级",
+      "answer": "根据规定，数据分为以下四个等级 [文档1]：\n1. 公开数据 [文档1]\n2. 内部数据 [文档1]\n3. 机密数据 [文档1]\n4. 绝密数据 [文档1]",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "公共WiFi下必须使用什么？",
+      "ground_truth": "公共WiFi下必须使用公司VPN",
+      "answer": "公共WiFi下必须使用公司VPN [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "泄露机密数据怎么处理？",
+      "ground_truth": "泄露机密数据警告至辞退",
+      "answer": "根据规定，泄露机密数据的处理措施为：警告至辞退 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "离开工位需要做什么？",
+      "ground_truth": "离开工位需锁屏",
+      "answer": "离开工位需锁屏 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "IT/信息安全管理规定.md"
+      ]
+    },
+    {
+      "question": "文具领用每月上限多少？",
+      "ground_truth": "文具类每人每月领用金额不超过100元",
+      "answer": "文具类每人每月领用金额不超过100元 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "打印纸每个部门每月几箱？",
+      "ground_truth": "打印纸每个部门每月2箱",
+      "answer": "每个部门每月2箱 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "硒鼓墨盒怎么领取？",
+      "ground_truth": "硒鼓墨盒以旧换新凭空硒鼓领取",
+      "answer": "硒鼓墨盒的领取方式为：以旧换新，凭空硒鼓领取 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "人为损坏办公设备怎么赔偿？",
+      "ground_truth": "人为损坏办公设备按折旧价50%赔偿",
+      "answer": "人为损坏办公设备（如摔坏电脑），按折旧价的50%赔偿 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "借用投影仪期限几天？",
+      "ground_truth": "借用投影仪等期限不超过3个工作日",
+      "answer": "借用投影仪的期限不超过3个工作日 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "借用逾期怎么收费？",
+      "ground_truth": "借用逾期按每天50元收取占用费",
+      "answer": "借用逾期未还按每天50元收取占用费 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "高值物品怎么处理？",
+      "ground_truth": "高值物品单价超500元需登记资产",
+      "answer": "高值物品（单价超500元）需登记资产 [文档1]。",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": [
+        "行政/办公用品领用管理办法.md"
+      ]
+    },
+    {
+      "question": "公司股票期权怎么分配？",
+      "ground_truth": "知识库中未找到相关内容",
+      "answer": "知识库中未找到相关内容",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": []
+    },
+    {
+      "question": "公积金缴纳比例是多少？",
+      "ground_truth": "知识库中未找到相关内容",
+      "answer": "知识库中未找到相关内容",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": []
+    },
+    {
+      "question": "公司年会什么时候开？",
+      "ground_truth": "知识库中未找到相关内容",
+      "answer": "知识库中未找到相关内容",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": []
+    },
+    {
+      "question": "团建活动经费多少？",
+      "ground_truth": "知识库中未找到相关内容",
+      "answer": "知识库中未找到相关内容",
+      "scores": {
+        "context_recall": 1,
+        "faithfulness": 1,
+        "answer_relevancy": 1
+      },
+      "hit_source": []
+    }
+  ]
+}

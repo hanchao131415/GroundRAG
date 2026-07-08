@@ -33,6 +33,10 @@ web/node_modules/
 .DS_Store
 Thumbs.db
 
+# SDD scratch
+.superpowers/
+
 # Logs
 *.log
 .pytest_cache/
+

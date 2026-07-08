@@ -1,0 +1,26 @@
+[
+  {
+    "strategy": "A 纯向量",
+    "pos_recall": 1.0,
+    "neg_refuse": 0.0,
+    "overall": 0.0,
+    "pos_detail": "37/37",
+    "neg_detail": "0/4"
+  },
+  {
+    "strategy": "B 混合检索",
+    "pos_recall": 1.0,
+    "neg_refuse": 0.0,
+    "overall": 0.0,
+    "pos_detail": "37/37",
+    "neg_detail": "0/4"
+  },
+  {
+    "strategy": "C 混合+rerank",
+    "pos_recall": 0.973,
+    "neg_refuse": 1.0,
+    "overall": 0.973,
+    "pos_detail": "36/37",
+    "neg_detail": "4/4"
+  }
+]

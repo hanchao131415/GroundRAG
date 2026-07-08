@@ -1,0 +1,42 @@
+# 企业级 RAG 知识库问答系统依赖（py312 实测锁定）
+# 详见 docs/环境配置.md
+# 安装顺序：先装下面，最后单独装 transformers==4.46.3（防被拽到5.x）
+# Python 版本：3.12（不要用 3.14，AI 生态未适配）
+
+# LangChain 核心链路（版本必须锁定，防连环升级）
+langchain==0.3.26
+langchain-core==0.3.86
+langchain-community==0.3.27
+langchain-text-splitters==0.3.8
+langchain-openai==0.2.14
+langchain-anthropic==0.3.3
+langchain-huggingface==0.3.1
+
+# 向量检索 + BM25
+faiss-cpu==1.14.3
+rank_bm25==0.2.2
+
+# 文档解析（企业多格式）
+PyMuPDF>=1.24
+python-docx==1.2.0
+
+# 中文分词（BM25 必须）
+jieba==0.42.1
+
+# Embedding + Reranker
+sentence-transformers==5.6.0
+FlagEmbedding==1.4.0
+
+# ⚠️ transformers 必须锁 4.46.3！5.x 移除 prepare_for_model 会破坏 FlagEmbedding reranker
+transformers==4.46.3
+
+# LLM 接入（OpenAI 兼容协议）
+openai>=1.86.0,<2.0.0
+
+# 配置 + 服务化
+python-dotenv>=1.0.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+slowapi>=0.1.9
+langfuse>=4.0
+PyJWT>=2.8

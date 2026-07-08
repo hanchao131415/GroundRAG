@@ -1,0 +1,13 @@
+[
+  {
+    "chunk_size": 500,
+    "vector_k": 5,
+    "bm25_k": 5,
+    "recall": 0.9189,
+    "mrr": 0.9054,
+    "neg_refuse": 0.0,
+    "overall": 0.0,
+    "pos": "34/37",
+    "neg": "0/4"
+  }
+]
