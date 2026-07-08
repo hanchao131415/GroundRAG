@@ -1,7 +1,9 @@
+import { useLang } from '../i18n'
 import type { SearchResult } from '../api/client'
 
 export function SearchResults({ results }: { results: SearchResult[] }) {
-  if (results.length === 0) return <div className="text-slate-400 text-sm p-4">无召回</div>
+  const { t } = useLang()
+  if (results.length === 0) return <div className="text-slate-400 text-sm p-4">{t('no_results')}</div>
   return (
     <div className="space-y-2 p-3">
       {results.map((r, i) => (
