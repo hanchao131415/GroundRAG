@@ -462,6 +462,9 @@ class RetrievalOptimizationModule:
         if rerank_threshold is None:
             rerank_threshold = self.rerank_threshold
 
+        logger.info(f"{'='*50}")
+        logger.info(f"【检索问题】{query}")
+
         # ==================================================================
         # 阶段1：双路召回
         # ==================================================================
@@ -689,6 +692,7 @@ class RetrievalOptimizationModule:
         """
         # ---- 管理员路径：全库混合检索 ----
         if "*" in user_departments:
+            logger.info(f"【问答】{query}")
             logger.info("管理员权限，全库检索")
             return self.hybrid_search(query, top_k)
 
@@ -696,6 +700,7 @@ class RetrievalOptimizationModule:
         # 普通用户可见 = 自己的部门 + "公共"（公共文档所有人都能看）
         # 用 set 去重：用户可能本身就在公共部门，避免重复
         allowed = list(set(user_departments + ["公共"]))
+        logger.info(f"【问答】{query}")
         logger.info(f"用户权限检索: 仅可见部门 {allowed}")
         # 优先走子索引（更快更准）；子索引不可用时退回全库后过滤（保证可用）
         if self.dept_indexes is not None:
