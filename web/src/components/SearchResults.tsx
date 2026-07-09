@@ -10,7 +10,7 @@ export function SearchResults({ results }: { results: SearchResult[] }) {
         <div key={i} className="border border-slate-200 rounded p-2 text-sm">
           <div className="flex gap-2 mb-1">
             <span className="font-medium text-slate-700 truncate">{r.source}</span>
-            <span className="ml-auto text-xs text-slate-400">score {r.score.toFixed(3)}</span>
+            <span className="ml-auto text-xs text-slate-400">{t('score')} {r.score.toFixed(3)}</span>
           </div>
           <p className="text-slate-600">{r.preview}</p>
         </div>
