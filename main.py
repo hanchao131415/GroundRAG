@@ -131,15 +131,20 @@ class EnterpriseRAGSystem:
         logger.info("✅ 模块初始化完成")
 
     def _init_reranker(self):
-        """bge-reranker 在 Windows 上多次尝试均 0xC0000005 崩溃，跳过。RRF+MMR 已足够。
+        """加载 bge-reranker（transformers 原生加载，兼容 Windows CPU）。
 
-        【工程取舍说明】
-        0xC0000005 是 Windows 下 FlagEmbedding 的 C 扩展内存访问违规，进程被直接杀死。
-        reranker.py 的 v2 版本虽然用 transformers 原生加载绕过了这个问题，
-        但在 main.py 这个编排层仍保留"可关闭"的开关——生产环境部署时再决定是否启用。
-        没有 reranker 时，RRF 融合 + MMR 去重已经能保证不错的检索质量。
+        reranker.py v2 用 transformers 原生 AutoModelForSequenceClassification 加载，
+        绕过了 FlagEmbedding C 扩展在 Windows 上的 0xC0000005 崩溃。
+        首次下载模型约 1.1GB，之后缓存复用。加载失败时降级为 None（不阻塞主流程）。
         """
-        return None
+        try:
+            from rag_modules.reranker import Reranker
+            reranker = Reranker()
+            logger.info("✅ bge-reranker 加载成功（cross-encoder 精排已启用）")
+            return reranker
+        except Exception as e:
+            logger.warning(f"⚠️ bge-reranker 加载失败，降级为 RRF+MMR 无精排: {e}")
+            return None
 
     def build_knowledge_base(self):
         """构建知识库：增量索引，文档变化时自动清缓存
