@@ -14,7 +14,7 @@ The new project will use:
 - FAISS and filesystem volumes for vector indexes, source documents, cache data, and local traces.
 - A single Vue 3 + Naive UI frontend for both administration and RAG user workflows.
 
-The two source repositories remain unchanged and serve as migration sources. The integrated application is created as a separate repository, provisionally named `groundrag-admin` under `F:/code/python/groundrag-admin`.
+The two source repositories remain unchanged and serve as migration sources. The integrated application is created as a separate repository named `groundrag-admin` under `F:/code/python/groundrag-admin`.
 
 ## 2. Scope
 
@@ -58,7 +58,7 @@ Browser
   |
   v
 Caddy
-  |-- /            Vue 3 application
+  |-- /            Vue 3 static application served by Caddy
   `-- /api/*       FastAPI application
                      |-- administration APIs
                      |-- authentication and RBAC
@@ -98,6 +98,15 @@ Dynamic menus provide these views:
 - Existing system management views
 
 Ordinary users see chat and search. Authorized knowledge managers see knowledge and indexing views. Administrators also see system management and audit views.
+
+### Runtime and dependency baseline
+
+- Python 3.12 is the only supported backend runtime for the first release.
+- The integrated application adopts a tested FastAPI `0.115.x` baseline instead of retaining the management template's FastAPI `0.111.0` and Starlette `0.37.2` pins.
+- FastAPI, Starlette, Pydantic, Tortoise ORM, Aerich, and HTTPX are resolved as one tested compatibility set before any RAG module is migrated.
+- The management template's authentication, CRUD, migration, and audit tests must pass on that compatibility set before feature work continues.
+- The two source requirement files are never concatenated. The new project owns one locked backend dependency set and one reproducible lock file.
+- The Vue application uses the management template's existing package manager and lock file; React dependencies are not imported.
 
 ## 5. Data Model
 
@@ -152,6 +161,7 @@ Full answers, retrieved document text, passwords, JWTs, API keys, and SSE respon
 
 - Login uses the template password hashing implementation after its dependencies and parameters are reviewed and locked.
 - JWTs are sent through the standard `Authorization: Bearer` header.
+- The Vue HTTP client, FastAPI authentication dependency, audit identity lookup, API tests, and documentation migrate together from the template's custom `token` header. The server does not accept both header formats after migration.
 - Production startup rejects a missing, default, or weak signing secret.
 - Access tokens use a short configurable lifetime. The first release does not implement refresh tokens.
 - Inactive users are rejected during authentication and on protected requests.
@@ -176,20 +186,26 @@ A chat request follows this sequence:
 
 The application applies separate connection, first-token, and total request deadlines to external LLM calls. It retries only explicitly transient network errors and upstream rate limiting, using a small bounded retry policy. Capacity exhaustion returns `429` with `Retry-After`; unavailable RAG dependencies return `503`.
 
+Synchronous retrieval, reranking, and provider streaming run outside the event-loop thread in a bounded online executor. Online work has its own concurrency limit and executor capacity; indexing cannot consume those slots.
+
+The inherited generic audit middleware excludes the streaming chat route before request-body or response-body inspection. It must never iterate, buffer, decode, or reconstruct an SSE response body. Chat observability is written through `RAGQueryLog` and the RAG tracer after redaction, preserving first-token delivery and client-disconnect cancellation.
+
 ## 8. Document Ingestion and Index Lifecycle
 
 The server validates filename, media type, extension, size, and content hash. Files are stored under generated storage keys rather than user-supplied paths.
 
-Index building uses a durable `IndexJob` record and one in-process worker task. Only one indexing job runs at a time. This is sufficient for the single-process, single-server target and avoids Redis or Celery.
+Index building uses a durable `IndexJob` record and one in-process coordinator task. CPU-bound parsing, embedding, and index construction run in a dedicated single-worker executor that is separate from the online RAG executor. Only one indexing job runs at a time. The coordinator limits native model threads and pauses or rejects a new indexing job when configured memory or online-load thresholds do not leave sufficient capacity. This preserves online RAG capacity without introducing Redis or Celery.
 
-The worker builds a complete candidate index in a versioned temporary directory. On success it:
+The worker builds a complete candidate index in a versioned temporary directory. Activation uses an atomic pointer-file protocol because filesystem state, SQLite, and Python memory cannot share one transaction. On success it:
 
 1. Flushes and validates all candidate index files.
-2. Atomically promotes the candidate directory to a versioned index directory.
-3. Updates the active version in a short SQLite transaction.
-4. Swaps the in-memory runtime under a synchronization boundary.
+2. Loads the candidate as a complete immutable runtime and executes a retrieval smoke check before exposure.
+3. Atomically renames the candidate directory to its permanent versioned directory.
+4. Atomically replaces an `active-index.json` pointer file using write, flush, `fsync`, and same-filesystem rename.
+5. Swaps the in-memory runtime reference under a short synchronization boundary; in-flight requests retain their immutable old runtime reference.
+6. Updates SQLite's active-version metadata after the runtime swap. SQLite is reporting metadata, not the source of truth for activation.
 
-On failure, the previous index remains active. Jobs left in `running` state after process restart are marked failed with an interruption reason and can be retried by an administrator.
+On any pre-pointer failure, the previous pointer and runtime remain active. If a failure occurs after pointer replacement but before the memory swap completes, the coordinator restores the previous pointer and records the activation failure. At startup, the pointer file is the activation source of truth; the application validates and loads that version, then reconciles SQLite metadata. Jobs left in `running` state after process restart are marked failed with an interruption reason and can be retried by an administrator. Old versioned indexes are retained according to a configured retention count so activation can be rolled back.
 
 ## 9. SQLite Operations
 
@@ -219,10 +235,10 @@ The integration must not inherit the template unchanged. It will:
 
 Docker Compose contains two services:
 
-- `app`: FastAPI plus the built Vue static assets and local RAG models.
-- `caddy`: TLS termination, reverse proxy, compression, request limits, and security headers.
+- `app`: FastAPI APIs, SQLite access, and local RAG models. It does not serve frontend assets.
+- `caddy`: a custom image containing the built Vue assets. It serves `/`, applies SPA fallback, and reverse-proxies only `/api/*` to `app`, in addition to TLS termination, compression, request limits, and security headers.
 
-The application container has health checks, a restart policy, memory and CPU constraints, log rotation, and dedicated volumes for each persistent data class. It exposes liveness separately from readiness so a broken RAG index does not create a restart loop that blocks administration.
+The multi-stage build produces the Vue assets for the Caddy image independently from the Python application image. The application container has health checks, a restart policy, memory and CPU constraints, log rotation, and dedicated volumes for each persistent data class. It exposes liveness separately from readiness so a broken RAG index does not create a restart loop that blocks administration.
 
 ## 12. Observability and Failure Handling
 
@@ -243,6 +259,7 @@ Langfuse remains optional. Its failure never blocks RAG requests.
 - User-to-department permission translation
 - Upload validation and content hashing
 - Retry classification, concurrency limiting, and error mapping
+- Executor isolation between online RAG work and indexing work
 - Index version promotion and rollback
 
 ### API tests
@@ -251,6 +268,7 @@ Langfuse remains optional. Its failure never blocks RAG requests.
 - Chat, search, stats, and knowledge endpoints
 - Department isolation and multi-department access
 - SSE event order, client disconnect cancellation, and sanitization
+- Verification that generic audit middleware never consumes an SSE body
 - `429`, `Retry-After`, `503`, and timeout behavior
 
 ### Integration tests
@@ -258,6 +276,7 @@ Langfuse remains optional. Its failure never blocks RAG requests.
 - SQLite, Tortoise, and Aerich migrations
 - A small real FAISS index and department-filtered retrieval
 - Successful index activation, failed build rollback, and interrupted-job recovery
+- Pointer-file and SQLite reconciliation after simulated activation interruption
 - Persistent data after application restart
 
 ### Frontend tests
@@ -290,7 +309,7 @@ Langfuse remains optional. Its failure never blocks RAG requests.
 
 Implementation proceeds in vertical increments:
 
-1. Create the new repository from a clean copy of the management template and establish dependency compatibility.
+1. Create the new repository from a clean copy of the management template, establish the Python 3.12 dependency baseline, and pass template regression tests.
 2. Apply mandatory template security corrections and baseline tests.
 3. Add RAG data models, migrations, permissions, and menu seeds.
 4. Migrate GroundRAG modules behind a framework-independent runtime service.
