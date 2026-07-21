@@ -164,8 +164,10 @@ class TestJWTAuth:
         """篡改后的 token 应被拒绝"""
         from app.auth import create_access_token, verify_token
         token = create_access_token("zhangsan", secret="test-secret")
-        # 篡改最后一个字符
-        tampered = token[:-1] + ("a" if token[-1] != "a" else "b")
+        header, payload, signature = token.split(".")
+        # 修改签名段的有效高位；末尾字符可能只改变 Base64URL 未使用的填充位。
+        signature = ("a" if signature[0] != "a" else "b") + signature[1:]
+        tampered = ".".join((header, payload, signature))
         with pytest.raises(Exception):
             verify_token(tampered, secret="test-secret")
 
