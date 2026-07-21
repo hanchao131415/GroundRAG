@@ -7,9 +7,10 @@
 改写为虚构公司"示例科技有限公司"的内部制度文档。
 每篇 3000-6000 字，确保 RAG chunk_size=500 时产生 6-12+ chunks。
 """
+import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent / "data" / "docs"
+ROOT = Path(os.environ.get("GROUNDRAG_DOCS_PATH", Path(__file__).resolve().parent.parent / "data" / "docs"))
 
 
 def write_text(rel, content):

@@ -48,6 +48,25 @@ FastAPI ── EnterpriseRAGSystem.ask_stream()
 
 ## Quick Start
 
+### Five-minute reviewer demo
+
+```bash
+make setup
+make demo                     # idempotent: prepares 11 multi-format documents
+make run                      # open http://localhost:8000
+```
+
+Use the user switcher to verify both retrieval quality and permission isolation:
+
+| User | Ask | Expected observation |
+|------|-----|----------------------|
+| `zhangsan` | `工作满3年年假几天？` | HR policy is cited; finance and IT documents stay hidden |
+| `lisi` | `一线城市住宿费报销上限是多少？` | Finance spreadsheet is retrieved |
+| `wangwu` | `公司密码多久更换一次？` | IT security policy is retrieved |
+| `admin` | `检索全部部门的制度文档并比较来源。` | Results may span every department |
+
+Open **Knowledge Base** as `admin` to upload a document and watch background reindexing. Existing chat/search traffic continues using the active index; a failed rebuild reports a degraded status without discarding it.
+
 ### Prerequisites
 
 - Python >= 3.12, < 3.14
