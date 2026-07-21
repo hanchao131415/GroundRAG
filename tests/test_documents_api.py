@@ -52,6 +52,7 @@ def test_upload_list_and_delete_document(monkeypatch, tmp_path):
         files={"file": ("policy.md", b"# annual leave", "text/markdown")},
     )
     assert uploaded.status_code == 202
+    assert uploaded.json()["index_status"] == "reindexing"
     document = uploaded.json()["document"]
     assert document["department"] == "HR"
     assert (tmp_path / "HR" / "policy.md").read_bytes() == b"# annual leave"
@@ -62,6 +63,7 @@ def test_upload_list_and_delete_document(monkeypatch, tmp_path):
 
     removed = client.delete(f"/api/v1/documents/{document['id']}", headers=headers)
     assert removed.status_code == 202
+    assert removed.json()["index_status"] == "reindexing"
     assert not (tmp_path / "HR" / "policy.md").exists()
 
 

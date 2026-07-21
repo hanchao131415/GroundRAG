@@ -176,14 +176,14 @@ async def _initialize_rag():
 async def _rebuild_rag():
     global _rag, _rag_status, _rag_error
     try:
-        _rag_status = "indexing"
+        _rag_status = "reindexing"
         new_rag = await asyncio.to_thread(_initialize_rag_sync)
         _rag = new_rag
         _rag_status = "ready"
         _rag_error = None
     except Exception:
         logger.exception("知识库重建失败")
-        _rag_status = "error"
+        _rag_status = "degraded" if _rag is not None else "error"
         _rag_error = "Knowledge base rebuild failed"
 
 
@@ -191,7 +191,7 @@ def _schedule_reindex():
     global _reindex_task, _rag_status, _rag_error
     if _reindex_task and not _reindex_task.done():
         raise HTTPException(status_code=409, detail={"code": "INDEX_BUSY", "message": "Indexing is already running"})
-    _rag_status = "indexing"
+    _rag_status = "reindexing"
     _rag_error = None
     _reindex_task = asyncio.create_task(_rebuild_rag())
 
@@ -304,19 +304,21 @@ def health():
     健康检查（无需认证）。
 
     用途：docker healthcheck / k8s liveness probe / 负载均衡探活。
-    返回 200 即代表服务活着。注意会顺带触发 RAG 初始化（首请求可能慢）。
+    返回 200 即代表服务进程活着；不会触发或等待 RAG 初始化。
     """
     return {"status": "ok"}
 
 
 @app.get("/ready")
 def ready():
-    if _rag_status != "ready":
+    if _rag is None:
         _raise_not_ready()
     rag = get_rag()
     return {
-        "status": "ready",
+        "status": _rag_status,
+        "serving": True,
         "rag_ready": True,
+        "error": _rag_error,
         "cache_size": rag.cache.stats()["total"] if rag.cache else 0,
     }
 
@@ -489,7 +491,7 @@ async def upload_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"code": "DOCUMENT_INVALID", "message": str(e)})
     _schedule_reindex()
-    return {"document": record.as_dict(), "index_status": "indexing"}
+    return {"document": record.as_dict(), "index_status": "reindexing"}
 
 
 @app.delete("/api/v1/documents/{document_id}", status_code=202)
@@ -503,7 +505,7 @@ def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
     _require_department(_user_departments(rag, user_id), record.department)
     delete_document(DEFAULT_CONFIG.data_path, document_id)
     _schedule_reindex()
-    return {"document": record.as_dict(), "index_status": "indexing"}
+    return {"document": record.as_dict(), "index_status": "reindexing"}
 
 
 @app.post("/api/v1/documents/reindex", status_code=202)
@@ -513,7 +515,7 @@ def reindex_documents(user_id: str = Depends(get_current_user)):
     if "*" not in _user_departments(rag, user_id):
         raise HTTPException(status_code=403, detail={"code": "ADMIN_REQUIRED", "message": "Admin access required"})
     _schedule_reindex()
-    return {"index_status": "indexing"}
+    return {"index_status": "reindexing"}
 
 
 @app.get("/api/v1/index-status")
