@@ -29,6 +29,15 @@ export interface DemoUser {
   role: string
 }
 
+export interface DocumentRecord {
+  id: string
+  source: string
+  department: string
+  size: number
+  modified_at: number
+  status: string
+}
+
 export type SSEEvent =
   | { type: 'sources'; items: Source[] }
   | { type: 'token'; text: string }

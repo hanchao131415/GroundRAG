@@ -220,12 +220,29 @@ class IndexConstructionModule:
         # 1. 加载旧 hash 记录
         old_hashes = {}
         if hash_file.exists():
-            old_hashes = json.loads(hash_file.read_text(encoding="utf-8"))
-            logger.info(f"加载旧 hash 记录: {len(old_hashes)} 条")
+            try:
+                old_hashes = json.loads(hash_file.read_text(encoding="utf-8"))
+                logger.info(f"加载旧 hash 记录: {len(old_hashes)} 条")
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"hash 记录损坏，将安全重建索引: {e}")
 
         # 2. 加载已有索引（如果存在）
         # load_index 内部会处理"路径不存在/加载失败"的情况，返回 None 即首次建库。
         existing = self.load_index()
+
+        if not chunks:
+            for suffix in ("index.faiss", "index.pkl"):
+                path = Path(self.index_save_path) / suffix
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            self.vectorstore = None
+            hash_file.parent.mkdir(parents=True, exist_ok=True)
+            temp_hash_file = hash_file.with_suffix(".json.tmp")
+            temp_hash_file.write_text("{}", encoding="utf-8")
+            temp_hash_file.replace(hash_file)
+            return None, existing is not None or bool(old_hashes)
 
         # 3. 筛选变化的 chunk
         # 思路：遍历当前所有 chunk，逐个算/取内容指纹，与旧记录对比。
@@ -233,14 +250,22 @@ class IndexConstructionModule:
         new_chunks = []
         unchanged = 0
         current_hashes = {}
+        key_occurrences = {}
         for c in chunks:
             # content_hash 优先用上游切块模块预算好的（省一次 md5 计算）；
             # 没有就现场算 md5——md5 对内容指纹足够快，且改动一字节就会变，能可靠检测更新。
-            h = c.metadata.get("content_hash") or hashlib.md5(c.page_content.encode("utf-8")).hexdigest()
+            normalized_text = "\n".join(
+                line.rstrip() for line in c.page_content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+            ).strip()
+            h = hashlib.md5(normalized_text.encode("utf-8")).hexdigest()
             # chunk_key：用 "源文件#chunk序号" 作为唯一标识。
             # 这是"逻辑 id"，与 FAISS 内部的物理 id 解耦——即使重建索引，逻辑标识也不变，
             # 所以 hash 记录可以跨重建复用。
-            chunk_key = c.metadata.get("source", "?") + "#" + str(c.metadata.get("chunk_index", ""))
+            source = str(c.metadata.get("source", "?")).replace("\\", "/")
+            base_key = source + "#" + str(c.metadata.get("chunk_index", ""))
+            occurrence = key_occurrences.get(base_key, 0)
+            key_occurrences[base_key] = occurrence + 1
+            chunk_key = f"{base_key}#{occurrence}"
             current_hashes[chunk_key] = h
             # 三种情况算"没变"：1) 有旧索引；2) 旧记录里有这个 key；3) 新旧 hash 相等。
             # 只要有一条不满足（新增 / 修改 / 首次建库），就进 new_chunks 走重建。
@@ -250,7 +275,7 @@ class IndexConstructionModule:
                 new_chunks.append(c)
 
         # 只要有一个 chunk 变了，就认为本次有变更（需重建 + 通知清缓存）
-        has_changes = len(new_chunks) > 0
+        has_changes = existing is None or current_hashes != old_hashes
 
         # 4. 有变化时必须全量重建（P0 修复：IndexFlatIP 不支持删除向量，
         #    增量 add_documents 会让旧版本文件的僵尸向量永远留在索引里，
@@ -265,7 +290,7 @@ class IndexConstructionModule:
         #   解法：只要有任何变化，就拿【全部 chunks】重新 build_vector_index。
         #   代价是重复 embed 那些"没变"的 chunk，但保证索引绝对正确。
         #   全量重建对几十万 chunk 的库也就几分钟，离线运维完全可接受。
-        if new_chunks:
+        if has_changes:
             # 统计哪些源文件有变化，打印明细便于运维定位（哪个文档改了）
             changed_files = sorted(set(c.metadata.get("source", "?") for c in new_chunks))
             logger.info(f"增量更新: {unchanged} 块不变, {len(new_chunks)} 块需重新 embedding")
@@ -283,7 +308,9 @@ class IndexConstructionModule:
         # 5. 保存当前 hash 记录
         # 无论是否重建，都要把最新的 hash 记录落盘——下次启动才能正确对比。
         hash_file.parent.mkdir(parents=True, exist_ok=True)
-        hash_file.write_text(json.dumps(current_hashes, ensure_ascii=False), encoding="utf-8")
+        temp_hash_file = hash_file.with_suffix(".json.tmp")
+        temp_hash_file.write_text(json.dumps(current_hashes, ensure_ascii=False), encoding="utf-8")
+        temp_hash_file.replace(hash_file)
         # 兜底：确保 self.vectorstore 一定有值（build_vector_index 没跑时用 existing）
         self.vectorstore = self.vectorstore or existing
         return self.vectorstore, has_changes

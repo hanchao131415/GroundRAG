@@ -121,15 +121,15 @@ class FallbackLLM:
 
         # 2) 其余未冷却的
         # 跳过 idx（已经在上面 yield 过了），把其它健康节点按原顺序交出去
-        for i, llm in enumerate(lls):
+        for i, llm in enumerate(llms):
             if i != idx and self._cooldown[id(llm)] <= now:
                 yield i, llm
 
         # 3) 冷却中的（万不得已才试）
         # 走到这里说明 ①② 都试完且都失败了——只能硬着头皮去碰运气看冷却的是否已恢复
         # （冷却只是"建议等一会儿"，不是硬禁止；真没别的选时还是得试）
-        for i, llm in enumerate(lls):
-            if i != idx and self._cooldown[id(llm)] > now:
+        for i, llm in enumerate(llms):
+            if self._cooldown[id(llm)] > now:
                 yield i, llm
 
     def invoke(self, messages, config=None, **kwargs):

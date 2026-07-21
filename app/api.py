@@ -23,6 +23,9 @@ import os
 import sys
 import asyncio
 import logging
+import json
+import queue
+import threading
 from pathlib import Path
 
 # 把项目根目录加入 sys.path，这样 `import config`、`from main import ...` 才能找到模块。
@@ -38,7 +41,7 @@ setup_logging()
 # HTTPException：抛出后自动转成 HTTP 错误响应（如 401/500）
 # Request：原始请求对象（slowapi 限流需要它来取客户端 IP）
 # Depends：FastAPI 依赖注入，用于把"鉴权"做成可复用依赖
-from fastapi import FastAPI, HTTPException, Query, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, Request, Depends, File, UploadFile
 # StreamingResponse：把一个"逐块产出数据"的生成器转成 HTTP 流式响应（SSE 用）
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 # BaseModel/Field：Pydantic 数据模型，请求体进来会被自动校验（少传/多传/类型错都会报错）
@@ -54,6 +57,13 @@ from slowapi.errors import RateLimitExceeded
 from config import DEFAULT_CONFIG                # 全局配置（含 jwt_secret、jwt_expire_hours）
 from main import EnterpriseRAGSystem             # RAG 主系统（检索+生成的大管家）
 from app.auth import create_access_token, get_current_user  # JWT 签发 / JWT 校验依赖
+from app.document_service import (
+    MAX_UPLOAD_BYTES,
+    delete_document,
+    list_documents,
+    resolve_document,
+    save_upload,
+)
 
 # 本文件的日志器（日志会带 api. 前缀，方便在日志里定位是 Web 层还是后端层）
 logger = logging.getLogger(__name__)
@@ -63,8 +73,15 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_rag()  # 启动即初始化；LLM_API_KEY 缺失等在此 fail-fast
-    yield
+    global _init_task, _rag_status
+    if _rag is None:
+        _rag_status = "initializing"
+        _init_task = asyncio.create_task(_initialize_rag())
+    try:
+        yield
+    finally:
+        if _init_task and not _init_task.done():
+            _init_task.cancel()
 
 
 # ---- FastAPI 应用实例 ----
@@ -126,25 +143,140 @@ class SearchResponse(BaseModel):
 # 加载向量索引、embedding 模型、LLM 客户端都很慢（秒级~十秒级），
 # 所以做单例：进程内只建一次，之后所有请求复用同一个 _rag。
 _rag: EnterpriseRAGSystem = None
+_rag_status = "initializing"
+_rag_error: str | None = None
+_init_task: asyncio.Task | None = None
+_reindex_task: asyncio.Task | None = None
+
+
+def _initialize_rag_sync() -> EnterpriseRAGSystem:
+    rag = EnterpriseRAGSystem()
+    rag.initialize()
+    rag.build_knowledge_base()
+    return rag
+
+
+async def _initialize_rag():
+    global _rag, _rag_status, _rag_error
+    try:
+        logger.info("后台初始化 RAG 系统...")
+        _rag = await asyncio.to_thread(_initialize_rag_sync)
+        _rag_status = "ready"
+        _rag_error = None
+        logger.info("RAG 系统就绪")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("RAG 初始化失败")
+        _rag = None
+        _rag_status = "error"
+        _rag_error = "RAG initialization failed"
+
+
+async def _rebuild_rag():
+    global _rag, _rag_status, _rag_error
+    try:
+        _rag_status = "reindexing"
+        new_rag = await asyncio.to_thread(_initialize_rag_sync)
+        _rag = new_rag
+        _rag_status = "ready"
+        _rag_error = None
+    except Exception:
+        logger.exception("知识库重建失败")
+        _rag_status = "degraded" if _rag is not None else "error"
+        _rag_error = "Knowledge base rebuild failed"
+
+
+def _schedule_reindex():
+    global _reindex_task, _rag_status, _rag_error
+    if _reindex_task and not _reindex_task.done():
+        raise HTTPException(status_code=409, detail={"code": "INDEX_BUSY", "message": "Indexing is already running"})
+    _rag_status = "reindexing"
+    _rag_error = None
+    _reindex_task = asyncio.create_task(_rebuild_rag())
+
+
+def _ensure_index_idle():
+    if _reindex_task and not _reindex_task.done():
+        raise HTTPException(status_code=409, detail={"code": "INDEX_BUSY", "message": "Indexing is already running"})
+
+
+def _user_departments(rag: EnterpriseRAGSystem, user_id: str) -> set[str]:
+    return set(rag.user_service.get_departments(user_id) or [])
+
+
+def _require_department(departments: set[str], department: str):
+    if "*" not in departments and department not in departments:
+        raise HTTPException(status_code=403, detail={"code": "DOCUMENT_FORBIDDEN", "message": "Department access denied"})
 
 
 def get_rag() -> EnterpriseRAGSystem:
-    """
-    懒加载 RAG 系统（首次请求时才初始化）。
-
-    为什么懒加载而非在 startup 里初始化：
-      - startup 不 await 完毕会拖慢服务启动；放这里让首个请求触发，逻辑简单可控。
-      - 注意：单例模式只适合"无请求级状态"的对象。当前 _rag 不应存任何
-        与具体用户/请求相关的字段（见下方 _resolve_departments 的 A2 说明）。
-    """
-    global _rag                       # 声明改的是模块级变量，不是局部变量
-    if _rag is None:                  # 首次调用时才进
-        logger.info("🚀 首次请求，初始化 RAG 系统...")
-        _rag = EnterpriseRAGSystem()  # 创建系统实例（读配置、连 LLM/向量库）
-        _rag.initialize()             # 初始化各子模块（embedding、检索、生成、缓存…）
-        _rag.build_knowledge_base()   # 构建/加载向量索引（最耗时的一步）
-        logger.info("✅ RAG 系统就绪")
+    """Return the ready singleton or a structured service-unavailable error."""
+    if _rag is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "RAG_NOT_READY",
+                "status": _rag_status,
+                "message": _rag_error or "RAG is initializing",
+            },
+        )
     return _rag
+
+
+def _raise_not_ready():
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "code": "RAG_NOT_READY",
+            "status": _rag_status,
+            "message": _rag_error or f"RAG is {_rag_status}",
+        },
+    )
+
+
+class SSEBridge:
+    """Bounded bridge from a synchronous event iterator to async SSE."""
+
+    _END = object()
+
+    def __init__(self, producer_factory, maxsize: int = 32):
+        self.producer_factory = producer_factory
+        self.queue = queue.Queue(maxsize=maxsize)
+        self.cancelled = threading.Event()
+        self.thread: threading.Thread | None = None
+
+    def cancel(self):
+        self.cancelled.set()
+
+    def _put(self, item) -> bool:
+        while not self.cancelled.is_set():
+            try:
+                self.queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _produce(self):
+        try:
+            for event in self.producer_factory():
+                if not self._put(event):
+                    break
+        except Exception as e:
+            self._put({"type": "error", "message": str(e)})
+        finally:
+            self._put(self._END)
+
+    def start(self):
+        self.thread = threading.Thread(target=self._produce, daemon=True)
+        self.thread.start()
+
+    async def get(self, timeout: float = 0.25):
+        try:
+            return await asyncio.to_thread(self.queue.get, True, timeout)
+        except queue.Empty:
+            return None
 
 
 def _resolve_departments(rag: EnterpriseRAGSystem, user_id: str):
@@ -172,13 +304,22 @@ def health():
     健康检查（无需认证）。
 
     用途：docker healthcheck / k8s liveness probe / 负载均衡探活。
-    返回 200 即代表服务活着。注意会顺带触发 RAG 初始化（首请求可能慢）。
+    返回 200 即代表服务进程活着；不会触发或等待 RAG 初始化。
     """
-    rag = get_rag()                                # 确保 RAG 已就绪（顺带懒加载）
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    if _rag is None:
+        _raise_not_ready()
+    rag = get_rag()
     return {
-        "status": "ok",                            # 固定 ok，探针只看 HTTP 状态码即可
-        "rag_ready": rag is not None,              # 后端是否就绪
-        "cache_size": rag.cache.stats()["total"] if rag.cache else 0,  # 缓存条目数（间接反映热度）
+        "status": _rag_status,
+        "serving": True,
+        "rag_ready": True,
+        "error": _rag_error,
+        "cache_size": rag.cache.stats()["total"] if rag.cache else 0,
     }
 
 
@@ -249,34 +390,30 @@ async def chat(req: ChatRequest, request: Request, user_id: str = Depends(get_cu
     deps = _resolve_departments(rag, user_id)
 
     if req.stream:
-        import json, asyncio, threading
         async def generate():
-            # P1：ask_stream 是同步生成器（含阻塞 LLM/检索/向量化 I/O），放后台线程，
-            # 经 asyncio.Queue + run_coroutine_threadsafe 桥到 async 生成器，
-            # 避免阻塞事件循环（否则并发请求会串行）。ask_stream 自身的异常已封装成 error 事件。
-            q: asyncio.Queue = asyncio.Queue()
-            loop = asyncio.get_running_loop()
-
-            def producer():
-                try:
-                    for event in rag.ask_stream(req.question, user_departments=deps, user_id=user_id):
-                        asyncio.run_coroutine_threadsafe(q.put(event), loop)
-                except Exception as e:  # 线程内未预期异常兜底
-                    asyncio.run_coroutine_threadsafe(q.put({"type": "error", "message": str(e)}), loop)
-                finally:
-                    asyncio.run_coroutine_threadsafe(q.put(None), loop)  # 结束哨兵
-
-            threading.Thread(target=producer, daemon=True).start()
-            while True:
-                event = await q.get()
-                if event is None:
-                    break
-                yield "data: [DONE]\n\n" if event["type"] == "done" \
-                    else f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            bridge = SSEBridge(
+                lambda: rag.ask_stream(req.question, user_departments=deps, user_id=user_id)
+            )
+            bridge.start()
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    event = await bridge.get()
+                    if event is None:
+                        continue
+                    if event is bridge._END:
+                        break
+                    yield "data: [DONE]\n\n" if event["type"] == "done" \
+                        else f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                bridge.cancel()
         return StreamingResponse(generate(), media_type="text/event-stream")
 
     # 非流式：收集所有事件再组装
-    events = list(rag.ask_stream(req.question, user_departments=deps, user_id=user_id))
+    events = await asyncio.to_thread(
+        lambda: list(rag.ask_stream(req.question, user_departments=deps, user_id=user_id))
+    )
     answer = "".join(e.get("text", "") for e in events if e["type"] == "token")
     sources = next((e["items"] for e in events if e["type"] == "sources"), [])
     trace = next((e["trace"] for e in events if e["type"] == "trace"), {})
@@ -327,6 +464,63 @@ def stats(user_id: str = Depends(get_current_user)):
         # 缓存统计（命中率等，反映热度与成本节约）
         "cache": rag.cache.stats() if rag.cache else {},
     }
+
+
+@app.get("/api/v1/documents")
+def documents(user_id: str = Depends(get_current_user)):
+    rag = get_rag()
+    departments = _user_departments(rag, user_id)
+    records = list_documents(DEFAULT_CONFIG.data_path, departments)
+    return {"documents": [record.as_dict() for record in records]}
+
+
+@app.post("/api/v1/documents", status_code=202)
+async def upload_document(
+    department: str = Query(..., min_length=1, max_length=64),
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    _ensure_index_idle()
+    rag = get_rag()
+    _require_department(_user_departments(rag, user_id), department)
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        record = save_upload(DEFAULT_CONFIG.data_path, file.filename or "", content, department)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EXISTS", "message": "Document already exists"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "DOCUMENT_INVALID", "message": str(e)})
+    _schedule_reindex()
+    return {"document": record.as_dict(), "index_status": "reindexing"}
+
+
+@app.delete("/api/v1/documents/{document_id}", status_code=202)
+async def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
+    _ensure_index_idle()
+    rag = get_rag()
+    resolved = resolve_document(DEFAULT_CONFIG.data_path, document_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail={"code": "DOCUMENT_NOT_FOUND", "message": "Document not found"})
+    _, record = resolved
+    _require_department(_user_departments(rag, user_id), record.department)
+    delete_document(DEFAULT_CONFIG.data_path, document_id)
+    _schedule_reindex()
+    return {"document": record.as_dict(), "index_status": "reindexing"}
+
+
+@app.post("/api/v1/documents/reindex", status_code=202)
+async def reindex_documents(user_id: str = Depends(get_current_user)):
+    _ensure_index_idle()
+    rag = get_rag()
+    if "*" not in _user_departments(rag, user_id):
+        raise HTTPException(status_code=403, detail={"code": "ADMIN_REQUIRED", "message": "Admin access required"})
+    _schedule_reindex()
+    return {"index_status": "reindexing"}
+
+
+@app.get("/api/v1/index-status")
+def index_status(user_id: str = Depends(get_current_user)):
+    return {"status": _rag_status, "error": _rag_error}
 
 
 # ---- 前端静态托管（方案 A：FastAPI 服务 web/dist）----

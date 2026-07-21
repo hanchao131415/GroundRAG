@@ -4,11 +4,12 @@ import type { ChatMessage } from '../hooks/useSSEChat'
 import { useLang } from '../i18n'
 
 export function ChatWindow({
-  messages, asking, onAsk,
+  messages, asking, onAsk, onStop,
 }: {
   messages: ChatMessage[]
   asking: boolean
   onAsk: (q: string) => void
+  onStop: () => void
 }) {
   const { t } = useLang()
   const [input, setInput] = useState('')
@@ -37,10 +38,10 @@ export function ChatWindow({
           className="flex-1 border border-slate-300 rounded px-3 py-2 outline-none focus:border-blue-500"
         />
         <button
-          onClick={submit}
-          disabled={asking}
+          onClick={asking ? onStop : submit}
+          disabled={!asking && !input.trim()}
           className="px-4 py-2 rounded bg-blue-600 text-white disabled:bg-slate-300"
-        >{asking ? t('generating') : t('send')}</button>
+        >{asking ? t('stop') : t('send')}</button>
       </div>
     </div>
   )

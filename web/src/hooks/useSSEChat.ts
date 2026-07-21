@@ -45,12 +45,14 @@ export function useSSEChat() {
         ctrl.signal,
       )
     } catch (err) {
-      patch({ error: (err as Error).message })
+      if ((err as Error).name !== 'AbortError') patch({ error: (err as Error).message })
     } finally {
       setAsking(false)
     }
   }, [])
 
+  const stop = useCallback(() => abortRef.current?.abort(), [])
+
   const clear = useCallback(() => setMessages([]), [])
-  return { messages, ask, asking, clear }
+  return { messages, ask, asking, stop, clear }
 }

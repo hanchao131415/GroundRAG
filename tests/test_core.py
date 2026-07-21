@@ -164,8 +164,10 @@ class TestJWTAuth:
         """篡改后的 token 应被拒绝"""
         from app.auth import create_access_token, verify_token
         token = create_access_token("zhangsan", secret="test-secret")
-        # 篡改最后一个字符
-        tampered = token[:-1] + ("a" if token[-1] != "a" else "b")
+        header, payload, signature = token.split(".")
+        # 修改签名段的有效高位；末尾字符可能只改变 Base64URL 未使用的填充位。
+        signature = ("a" if signature[0] != "a" else "b") + signature[1:]
+        tampered = ".".join((header, payload, signature))
         with pytest.raises(Exception):
             verify_token(tampered, secret="test-secret")
 
@@ -216,6 +218,59 @@ class TestFallbackLLM:
         with pytest.raises(RuntimeError, match="所有 LLM"):
             llm.invoke("hi")
 
+    def test_cooling_primary_is_skipped_after_backup_succeeds(self):
+        """A failed primary stays cooling while the healthy backup remains preferred."""
+        from rag_modules.llm_fallback import FallbackLLM
+
+        class RecordingLLM:
+            def __init__(self, name, error=None):
+                self.model_name = name
+                self.error = error
+                self.calls = 0
+
+            def invoke(self, msgs, config=None):
+                self.calls += 1
+                if self.error:
+                    raise self.error
+                return f"resp-{self.model_name}"
+
+        primary = RecordingLLM("primary", RuntimeError("down"))
+        backup = RecordingLLM("backup")
+        llm = FallbackLLM([primary, backup], cooldown_seconds=60)
+
+        assert llm.invoke("first") == "resp-backup"
+        assert llm.invoke("second") == "resp-backup"
+        assert primary.calls == 1
+        assert backup.calls == 2
+
+    def test_cooling_last_success_is_retried_after_other_providers_fail(self):
+        """Cooling is a priority hint, not a hard exclusion when all peers fail."""
+        from rag_modules.llm_fallback import FallbackLLM
+
+        class MutableLLM:
+            def __init__(self, name, error=None):
+                self.model_name = name
+                self.error = error
+                self.calls = 0
+
+            def invoke(self, msgs, config=None):
+                self.calls += 1
+                if self.error:
+                    raise self.error
+                return self.model_name
+
+        primary = MutableLLM("primary")
+        backup = MutableLLM("backup", RuntimeError("backup down"))
+        llm = FallbackLLM([primary, backup], cooldown_seconds=60)
+        assert llm.invoke("warmup") == "primary"
+        primary.error = RuntimeError("primary down")
+
+        with pytest.raises(RuntimeError, match="所有 LLM"):
+            llm.invoke("failure")
+
+        assert primary.calls == 3
+        assert backup.calls == 2
+
 
 # ===== 7. API 并发安全（A2 修复：权限不挂单例 current_user）=====
 class TestAPIConcurrencyFix:
@@ -245,11 +300,14 @@ class TestAPIConcurrencyFix:
                 self.user_service = FakeUserService()
                 self.current_user = None  # 关键：单例上不持有当前用户
 
-            def ask(self, question, stream=False, user_departments=None, user_id=None):
+            def ask_stream(self, question, user_departments=None, user_id=None):
                 recorded.append({"user_id": user_id,
                                  "user_departments": user_departments,
                                  "singleton": self.current_user})
-                return "ok"
+                yield {"type": "sources", "items": []}
+                yield {"type": "token", "text": "ok"}
+                yield {"type": "trace", "trace": {"trace_id": "test"}}
+                yield {"type": "done"}
 
         monkeypatch.setattr(api, "_rag", FakeRag())
         from fastapi.testclient import TestClient

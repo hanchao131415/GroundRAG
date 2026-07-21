@@ -399,6 +399,7 @@ class RetrievalOptimizationModule:
                 with open(self._bm25_path, "rb") as f:
                     # pickle 反序列化恢复整个 BM25Retriever 对象（含倒排索引）
                     self.bm25_retriever = pickle.load(f)
+                self.bm25_retriever.k = self.bm25_search_k
                 logger.info(f"📂 BM25 索引从磁盘加载: {self._bm25_path} "
                             f"({len(self.chunks)} chunks)")
                 return  # 加载成功，跳过重建
@@ -505,40 +506,24 @@ class RetrievalOptimizationModule:
         candidates = self._rrf_rerank(vector_docs, bm25_docs)
         logger.info(f"  [RRF融合] 候选 {len(candidates)} 个")
 
-        # ==================================================================
-        # 阶段2.5：MMR 去重（P1 修复）
-        # ==================================================================
-        # 干掉重复块（页眉页脚/模板套话），并对相似块做多样性重排（见坑35）
-        candidates = _mmr_dedup(candidates)
-        logger.info(f"  [MMR去重] 候选 {len(candidates)} 个")
+        return self._finalize_candidates(query, candidates, top_k, rerank_threshold)
 
-        # ==================================================================
-        # 阶段3：Reranker 精排（如果有）
-        # ==================================================================
-        if self.reranker:
-            try:
-                # bge-reranker：对 (query, chunk) 对做 cross-encoder 精细评分，
-                # 比 embedding 的向量相似度准得多（向量是"双塔"，rerank 是"交叉"）
-                candidates = self.reranker.rerank(query, candidates)
-            except Exception as e:
-                # P2 降级：Reranker 崩溃（GPU OOM / 模型加载失败）时不能让整个检索挂掉，
-                # 跳过精排，直接返回 RRF+MMR 的结果，保证主流程不中断
-                logger.error(f"Reranker 执行失败，降级跳过精排: {e}")
-                return candidates[:top_k]
-            # ---- 严出：按 rerank 分数过滤 + 截断 top_k ----
-            # rerank 分数低的（负例）在此被丢弃——这是"严出"的执行点
-            kept = [d for d in candidates if d.metadata.get("rerank_score", 0) >= rerank_threshold]
-            final = kept[:top_k]
-            logger.info(f"  [Rerank精排] 阈值≥{rerank_threshold} 过滤: {len(candidates)}→{len(kept)}→返回{len(final)}")
-            logger.info(f"  [最终返回]:")
-            for d in final:
-                logger.info(f"      rerank={d.metadata.get('rerank_score',0):.3f}  {_fmt_chunks([d])[0]}")
-            return final
-        else:
-            # 无 reranker：退化为"RRF+MMR 后直接截断"，没有精排过滤能力（精度略差）
-            final = candidates[:top_k]
-            logger.info(f"  [无rerank] 返回: {[d.metadata.get('source','?') for d in final]}")
-            return final
+    def _finalize_candidates(self, query: str, candidates: List[Document], top_k: int,
+                             rerank_threshold: float = None) -> List[Document]:
+        """Apply the shared MMR, rerank, and threshold tail."""
+        candidates = _mmr_dedup(candidates)
+        if not self.reranker:
+            return candidates[:top_k]
+        try:
+            ranked = self.reranker.rerank(query, candidates)
+        except Exception as e:
+            logger.error(f"Reranker 执行失败，降级跳过精排: {e}")
+            return candidates[:top_k]
+        threshold = self.rerank_threshold if rerank_threshold is None else rerank_threshold
+        return [
+            doc for doc in ranked
+            if doc.metadata.get("rerank_score", 0) >= threshold
+        ][:top_k]
     
     def metadata_filtered_search(self, query: str, filters: Dict[str, Any], top_k: int = 5) -> List[Document]:
         """
@@ -664,8 +649,7 @@ class RetrievalOptimizationModule:
         # 尾部：RRF 融合 + MMR 去重 + 截断
         # ==================================================================
         candidates = self._rrf_rerank(vector_docs, bm25_docs)
-        candidates = _mmr_dedup(candidates)  # P1：MMR 去重
-        final = candidates[:top_k]
+        final = self._finalize_candidates(query, candidates, top_k)
         logger.info(f"  [RBAC子索引] allowed={allowed_depts} 向量{len(vector_docs)}+BM25{len(bm25_docs)} "
                     f"→ RRF{len(candidates)} → 返回{len(final)}")
         return final

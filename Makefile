@@ -1,4 +1,4 @@
-.PHONY: setup dev build run docker-build docker-up clean help
+.PHONY: setup dev build run docs demo test test-web docker-build docker-up docker-down clean help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -28,6 +28,9 @@ run: build ## Build frontend + start FastAPI serving everything at :8000
 
 docs: ## Generate synthetic sample documents
 	.\.venv\Scripts\Activate.ps1 && python scripts/make_sample_docs.py
+
+demo: ## Prepare sample documents and print the reviewer walkthrough
+	.\.venv\Scripts\Activate.ps1 && python scripts/demo_setup.py
 
 # ---- Testing ----
 
