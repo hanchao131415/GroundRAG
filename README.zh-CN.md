@@ -117,7 +117,7 @@ cd web && npm run dev         # → http://localhost:5173 (HMR 热更新)
 | `POST` | `/api/v1/documents/reindex` | 管理员 | 后台触发全量索引重建 |
 | `GET` | `/api/v1/index-status` | JWT | 查看索引状态和最近错误 |
 | `GET` | `/health` | -- | 轻量进程存活检查（不会加载模型） |
-| `GET` | `/ready` | -- | 结构化就绪检查；加载或索引时返回 `503` |
+| `GET` | `/ready` | -- | 结构化就绪检查；在线重建时返回 `200`，仅在没有可用 RAG 实例时返回 `503` |
 
 ## 技术栈
 
@@ -130,7 +130,7 @@ cd web && npm run dev         # → http://localhost:5173 (HMR 热更新)
 | **精排模型** | `bge-reranker-base`（transformers 原生加载，Windows 兼容） |
 | **大模型** | DeepSeek v4 / 智谱 GLM / Anthropic（协议自适应工厂） |
 | **前端** | React 19, TypeScript 6, Vite 8, Tailwind CSS 3 |
-| **测试** | pytest（66 个测试）, Vitest + RTL（10 个测试） |
+| **测试** | pytest（71 个测试）, Vitest + RTL（11 个测试） |
 | **可观测** | 自研 Tracer → JSONL；Langfuse（可选） |
 | **部署** | Docker 多阶段构建, docker-compose |
 
@@ -175,7 +175,7 @@ GroundRAG/
 ├── data/
 │   ├── docs/               # 11 份样例文档（5 部门，每篇 3k-5k 字）
 │   └── users.json
-├── tests/                  # 66 个 pytest + 10 个 vitest
+├── tests/                  # 71 个 pytest + 11 个 vitest
 ├── evaluation/             # 检索调参 + A/B 对比工具
 ├── scripts/                # make_sample_docs.py
 ├── Dockerfile              # 多阶段构建（node + python，非 root）

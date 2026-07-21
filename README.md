@@ -117,7 +117,7 @@ cd web && npm run dev         # http://localhost:5173 (HMR)
 | `POST` | `/api/v1/documents/reindex` | Admin | Trigger a full background reindex |
 | `GET` | `/api/v1/index-status` | JWT | Read indexing state and last error |
 | `GET` | `/health` | -- | Lightweight process liveness (does not load models) |
-| `GET` | `/ready` | -- | Structured readiness; returns `503` while loading/indexing |
+| `GET` | `/ready` | -- | Structured readiness; returns `200` during online reindex and `503` only when no RAG instance is available |
 
 ## Tech Stack
 
@@ -130,7 +130,7 @@ cd web && npm run dev         # http://localhost:5173 (HMR)
 | **Reranker** | `bge-reranker-base` (transformers-native, Windows-safe) |
 | **LLM** | DeepSeek v4 / Zhipu GLM / Anthropic (protocol-adaptive factory) |
 | **Frontend** | React 19, TypeScript 6, Vite 8, Tailwind CSS 3 |
-| **Testing** | pytest (66 tests), Vitest + RTL (10 tests) |
+| **Testing** | pytest (71 tests), Vitest + RTL (11 tests) |
 | **Trace** | Custom Tracer -> JSONL; Langfuse (optional) |
 | **Deploy** | Docker multi-stage, docker-compose |
 
@@ -175,7 +175,7 @@ GroundRAG/
 ├── data/
 │   ├── docs/               # 11 sample docs (5 depts, 3k-5k chars each)
 │   └── users.json
-├── tests/                  # 66 pytest + 10 vitest
+├── tests/                  # 71 pytest + 11 vitest
 ├── evaluation/             # Retrieval sweep + A/B comparison
 ├── scripts/                # make_sample_docs.py
 ├── Dockerfile              # Multi-stage (node + python, non-root)
