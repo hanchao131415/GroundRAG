@@ -23,6 +23,9 @@ import os
 import sys
 import asyncio
 import logging
+import json
+import queue
+import threading
 from pathlib import Path
 
 # 把项目根目录加入 sys.path，这样 `import config`、`from main import ...` 才能找到模块。
@@ -63,8 +66,15 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_rag()  # 启动即初始化；LLM_API_KEY 缺失等在此 fail-fast
-    yield
+    global _init_task, _rag_status
+    if _rag is None:
+        _rag_status = "initializing"
+        _init_task = asyncio.create_task(_initialize_rag())
+    try:
+        yield
+    finally:
+        if _init_task and not _init_task.done():
+            _init_task.cancel()
 
 
 # ---- FastAPI 应用实例 ----
@@ -126,25 +136,91 @@ class SearchResponse(BaseModel):
 # 加载向量索引、embedding 模型、LLM 客户端都很慢（秒级~十秒级），
 # 所以做单例：进程内只建一次，之后所有请求复用同一个 _rag。
 _rag: EnterpriseRAGSystem = None
+_rag_status = "initializing"
+_rag_error: str | None = None
+_init_task: asyncio.Task | None = None
+
+
+def _initialize_rag_sync() -> EnterpriseRAGSystem:
+    rag = EnterpriseRAGSystem()
+    rag.initialize()
+    rag.build_knowledge_base()
+    return rag
+
+
+async def _initialize_rag():
+    global _rag, _rag_status, _rag_error
+    try:
+        logger.info("后台初始化 RAG 系统...")
+        _rag = await asyncio.to_thread(_initialize_rag_sync)
+        _rag_status = "ready"
+        _rag_error = None
+        logger.info("RAG 系统就绪")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("RAG 初始化失败")
+        _rag = None
+        _rag_status = "error"
+        _rag_error = "RAG initialization failed"
 
 
 def get_rag() -> EnterpriseRAGSystem:
-    """
-    懒加载 RAG 系统（首次请求时才初始化）。
-
-    为什么懒加载而非在 startup 里初始化：
-      - startup 不 await 完毕会拖慢服务启动；放这里让首个请求触发，逻辑简单可控。
-      - 注意：单例模式只适合"无请求级状态"的对象。当前 _rag 不应存任何
-        与具体用户/请求相关的字段（见下方 _resolve_departments 的 A2 说明）。
-    """
-    global _rag                       # 声明改的是模块级变量，不是局部变量
-    if _rag is None:                  # 首次调用时才进
-        logger.info("🚀 首次请求，初始化 RAG 系统...")
-        _rag = EnterpriseRAGSystem()  # 创建系统实例（读配置、连 LLM/向量库）
-        _rag.initialize()             # 初始化各子模块（embedding、检索、生成、缓存…）
-        _rag.build_knowledge_base()   # 构建/加载向量索引（最耗时的一步）
-        logger.info("✅ RAG 系统就绪")
+    """Return the ready singleton or a structured service-unavailable error."""
+    if _rag is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "RAG_NOT_READY",
+                "status": _rag_status,
+                "message": _rag_error or "RAG is initializing",
+            },
+        )
     return _rag
+
+
+class SSEBridge:
+    """Bounded bridge from a synchronous event iterator to async SSE."""
+
+    _END = object()
+
+    def __init__(self, producer_factory, maxsize: int = 32):
+        self.producer_factory = producer_factory
+        self.queue = queue.Queue(maxsize=maxsize)
+        self.cancelled = threading.Event()
+        self.thread: threading.Thread | None = None
+
+    def cancel(self):
+        self.cancelled.set()
+
+    def _put(self, item) -> bool:
+        while not self.cancelled.is_set():
+            try:
+                self.queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _produce(self):
+        try:
+            for event in self.producer_factory():
+                if not self._put(event):
+                    break
+        except Exception as e:
+            self._put({"type": "error", "message": str(e)})
+        finally:
+            self._put(self._END)
+
+    def start(self):
+        self.thread = threading.Thread(target=self._produce, daemon=True)
+        self.thread.start()
+
+    async def get(self, timeout: float = 0.25):
+        try:
+            return await asyncio.to_thread(self.queue.get, True, timeout)
+        except queue.Empty:
+            return None
 
 
 def _resolve_departments(rag: EnterpriseRAGSystem, user_id: str):
@@ -174,11 +250,16 @@ def health():
     用途：docker healthcheck / k8s liveness probe / 负载均衡探活。
     返回 200 即代表服务活着。注意会顺带触发 RAG 初始化（首请求可能慢）。
     """
-    rag = get_rag()                                # 确保 RAG 已就绪（顺带懒加载）
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    rag = get_rag()
     return {
-        "status": "ok",                            # 固定 ok，探针只看 HTTP 状态码即可
-        "rag_ready": rag is not None,              # 后端是否就绪
-        "cache_size": rag.cache.stats()["total"] if rag.cache else 0,  # 缓存条目数（间接反映热度）
+        "status": "ready",
+        "rag_ready": True,
+        "cache_size": rag.cache.stats()["total"] if rag.cache else 0,
     }
 
 
@@ -249,34 +330,30 @@ async def chat(req: ChatRequest, request: Request, user_id: str = Depends(get_cu
     deps = _resolve_departments(rag, user_id)
 
     if req.stream:
-        import json, asyncio, threading
         async def generate():
-            # P1：ask_stream 是同步生成器（含阻塞 LLM/检索/向量化 I/O），放后台线程，
-            # 经 asyncio.Queue + run_coroutine_threadsafe 桥到 async 生成器，
-            # 避免阻塞事件循环（否则并发请求会串行）。ask_stream 自身的异常已封装成 error 事件。
-            q: asyncio.Queue = asyncio.Queue()
-            loop = asyncio.get_running_loop()
-
-            def producer():
-                try:
-                    for event in rag.ask_stream(req.question, user_departments=deps, user_id=user_id):
-                        asyncio.run_coroutine_threadsafe(q.put(event), loop)
-                except Exception as e:  # 线程内未预期异常兜底
-                    asyncio.run_coroutine_threadsafe(q.put({"type": "error", "message": str(e)}), loop)
-                finally:
-                    asyncio.run_coroutine_threadsafe(q.put(None), loop)  # 结束哨兵
-
-            threading.Thread(target=producer, daemon=True).start()
-            while True:
-                event = await q.get()
-                if event is None:
-                    break
-                yield "data: [DONE]\n\n" if event["type"] == "done" \
-                    else f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            bridge = SSEBridge(
+                lambda: rag.ask_stream(req.question, user_departments=deps, user_id=user_id)
+            )
+            bridge.start()
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    event = await bridge.get()
+                    if event is None:
+                        continue
+                    if event is bridge._END:
+                        break
+                    yield "data: [DONE]\n\n" if event["type"] == "done" \
+                        else f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                bridge.cancel()
         return StreamingResponse(generate(), media_type="text/event-stream")
 
     # 非流式：收集所有事件再组装
-    events = list(rag.ask_stream(req.question, user_departments=deps, user_id=user_id))
+    events = await asyncio.to_thread(
+        lambda: list(rag.ask_stream(req.question, user_departments=deps, user_id=user_id))
+    )
     answer = "".join(e.get("text", "") for e in events if e["type"] == "token")
     sources = next((e["items"] for e in events if e["type"] == "sources"), [])
     trace = next((e["trace"] for e in events if e["type"] == "trace"), {})

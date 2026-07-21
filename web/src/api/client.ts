@@ -2,6 +2,37 @@ import type { DemoUser, SSEEvent } from '../types'
 import { parseSSEChunk } from './sse'
 
 let _token: string | null = localStorage.getItem('groundrag_token')
+
+export class ApiError extends Error {
+  readonly status: number
+  readonly code: string | undefined
+
+  constructor(
+    status: number,
+    code: string | undefined,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  let detail: unknown
+  try {
+    detail = (await response.json()).detail
+  } catch {
+    detail = undefined
+  }
+  if (response.status === 401) setToken(null)
+  if (detail && typeof detail === 'object') {
+    const value = detail as { code?: string; message?: string }
+    throw new ApiError(response.status, value.code, value.message || `请求失败: ${response.status}`)
+  }
+  throw new ApiError(response.status, undefined, typeof detail === 'string' ? detail : `请求失败: ${response.status}`)
+}
 export function setToken(t: string | null) {
   _token = t
   if (t) localStorage.setItem('groundrag_token', t)
@@ -17,7 +48,7 @@ export async function login(user_id: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id }),
   })
-  if (!r.ok) throw new Error(`登录失败: ${r.status}`)
+  if (!r.ok) await throwApiError(r)
   const data = await r.json()
   setToken(data.access_token)
   return data.access_token
@@ -25,7 +56,7 @@ export async function login(user_id: string): Promise<string> {
 
 export async function getDemoUsers(): Promise<DemoUser[]> {
   const r = await fetch('/auth/demo-users')
-  if (!r.ok) return []
+  if (!r.ok) await throwApiError(r)
   const data = await r.json()
   return data.users
 }
@@ -38,14 +69,14 @@ export async function search(question: string, top_k = 3): Promise<SearchResult[
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ question, top_k }),
   })
-  if (!r.ok) throw new Error(`检索失败: ${r.status}`)
+  if (!r.ok) await throwApiError(r)
   const data = await r.json()
   return data.results
 }
 
 export async function getStats(): Promise<Record<string, unknown>> {
   const r = await fetch('/api/v1/stats', { headers: authHeaders() })
-  if (!r.ok) throw new Error(`统计失败: ${r.status}`)
+  if (!r.ok) await throwApiError(r)
   return r.json()
 }
 
@@ -63,7 +94,8 @@ export async function streamChat(
     body: JSON.stringify({ question, stream: true }),
     signal,
   })
-  if (!r.ok || !r.body) throw new Error(`问答失败: ${r.status}`)
+  if (!r.ok) await throwApiError(r)
+  if (!r.body) throw new ApiError(r.status, undefined, '问答响应为空')
 
   const reader = r.body.getReader()
   const decoder = new TextDecoder()

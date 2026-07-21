@@ -1,13 +1,28 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { DemoUser } from '../types'
-import { login, getDemoUsers } from '../api/client'
+import { ApiError, login, getDemoUsers } from '../api/client'
 
 export function useAuth() {
   const [demoUsers, setDemoUsers] = useState<DemoUser[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    getDemoUsers().then(setDemoUsers).catch(() => {})
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let disposed = false
+    const load = () => {
+      getDemoUsers().then((users) => {
+        if (!disposed) setDemoUsers(users)
+      }).catch((err) => {
+        if (!disposed && err instanceof ApiError && err.status === 503) {
+          timer = setTimeout(load, 1000)
+        }
+      })
+    }
+    load()
+    return () => {
+      disposed = true
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const loginAs = useCallback(async (userId: string | null) => {

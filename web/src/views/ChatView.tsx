@@ -8,7 +8,7 @@ import { useLang } from '../i18n'
 export function ChatView() {
   const { t } = useLang()
   const { demoUsers, currentUser, loginAs } = useAuth()
-  const { messages, ask, asking, clear } = useSSEChat()
+  const { messages, ask, asking, stop, clear } = useSSEChat()
 
   // 切换用户时清空对话，避免跨用户串内容
   useEffect(() => { clear() }, [currentUser, clear])
@@ -21,7 +21,7 @@ export function ChatView() {
           {currentUser ? `${t('visible_depts')} ${currentUser.departments.join(', ')}` : t('no_filter')}
         </span>
       </div>
-      <ChatWindow messages={messages} asking={asking} onAsk={ask} />
+      <ChatWindow messages={messages} asking={asking} onAsk={ask} onStop={stop} />
     </div>
   )
 }

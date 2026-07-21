@@ -139,10 +139,22 @@ class _FakeVS:
         return _R()
 
 
-def _build_ret(dept_indexes=None, fake_vs=None, chunks=None):
+def _build_ret(dept_indexes=None, fake_vs=None, chunks=None, reranker=None):
     return RetrievalOptimizationModule(
         fake_vs or _FakeVS(), chunks or _make_chunks({"HR": ["x"]}),
-        config=_Cfg(), dept_indexes=dept_indexes)
+        config=_Cfg(), dept_indexes=dept_indexes, reranker=reranker)
+
+
+class _RecordingReranker:
+    def __init__(self, scores):
+        self.scores = scores
+        self.seen = []
+
+    def rerank(self, query, docs):
+        self.seen = list(docs)
+        for doc in docs:
+            doc.metadata["rerank_score"] = self.scores[doc.metadata["chunk_id"]]
+        return sorted(docs, key=lambda doc: doc.metadata["rerank_score"], reverse=True)
 
 
 def test_rbac_subindex_unions_allowed_and_public_no_leak():
@@ -224,3 +236,34 @@ def test_multi_dept_union():
     results = ret.permission_aware_search("q", ["HR", "财务"], top_k=5)
     ids = {d.metadata["chunk_id"] for d in results}
     assert {"h1", "f1", "p1"} <= ids   # HR + 财务 + 公共 都在
+
+
+def test_rbac_reranker_only_receives_authorized_candidates():
+    hr = Document("annual leave", metadata={"department": "HR", "chunk_id": "h1", "source": "HR/a"})
+    fin = Document("expense", metadata={"department": "FIN", "chunk_id": "f1", "source": "FIN/b"})
+    reranker = _RecordingReranker({"h1": 0.9})
+    ret = _build_ret(
+        dept_indexes={"HR": _FakeSub([(hr, 0.9)]), "FIN": _FakeSub([(fin, 0.99)])},
+        chunks=[hr, fin],
+        reranker=reranker,
+    )
+
+    results = ret.permission_aware_search("annual leave", ["HR"], top_k=3)
+
+    assert {doc.metadata["department"] for doc in reranker.seen} == {"HR"}
+    assert [doc.metadata["chunk_id"] for doc in results] == ["h1"]
+
+
+def test_rbac_reranker_applies_configured_threshold():
+    high = Document("relevant", metadata={"department": "HR", "chunk_id": "high", "source": "HR/a"})
+    low = Document("weak", metadata={"department": "HR", "chunk_id": "low", "source": "HR/b"})
+    reranker = _RecordingReranker({"high": 0.9, "low": 0.1})
+    ret = _build_ret(
+        dept_indexes={"HR": _FakeSub([(low, 0.9), (high, 0.8)])},
+        chunks=[low, high],
+        reranker=reranker,
+    )
+
+    results = ret.permission_aware_search("relevant", ["HR"], top_k=3)
+
+    assert [doc.metadata["chunk_id"] for doc in results] == ["high"]

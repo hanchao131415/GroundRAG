@@ -19,6 +19,7 @@ const dict: Record<Lang, Record<string, string>> = {
     // ChatWindow
     input_placeholder: '输入问题…',
     send: '发送',
+    stop: '停止',
     generating: '生成中…',
     chat_empty: '试试问「工作满3年年假几天」「住宿费报销上限」「密码多久换一次」',
 
@@ -72,6 +73,7 @@ const dict: Record<Lang, Record<string, string>> = {
     // ChatWindow
     input_placeholder: 'Ask a question…',
     send: 'Send',
+    stop: 'Stop',
     generating: 'Generating…',
     chat_empty: 'Try "工作满3年年假几天" / "住宿费报销上限" / "密码多久换一次"',
 
