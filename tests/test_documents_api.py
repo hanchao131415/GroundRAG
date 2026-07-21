@@ -89,3 +89,43 @@ def test_reindex_requires_admin(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "ADMIN_REQUIRED"
+
+
+def test_admin_reindex_can_schedule_on_request_event_loop(monkeypatch, tmp_path):
+    from app import api
+
+    original_schedule = api._schedule_reindex
+    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(api, "_schedule_reindex", original_schedule)
+    monkeypatch.setattr(api, "_initialize_rag_sync", _Rag)
+    monkeypatch.setattr(api, "_reindex_task", None)
+    token = _token(client, "admin")
+
+    response = client.post(
+        "/api/v1/documents/reindex",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["index_status"] == "reindexing"
+
+
+def test_delete_can_schedule_on_request_event_loop(monkeypatch, tmp_path):
+    from app import api
+    from app.document_service import save_upload
+
+    original_schedule = api._schedule_reindex
+    client = _client(monkeypatch, tmp_path)
+    monkeypatch.setattr(api, "_schedule_reindex", original_schedule)
+    monkeypatch.setattr(api, "_initialize_rag_sync", _Rag)
+    monkeypatch.setattr(api, "_reindex_task", None)
+    document = save_upload(str(tmp_path), "policy.md", b"policy", "HR")
+    token = _token(client, "zhangsan")
+
+    response = client.delete(
+        f"/api/v1/documents/{document.document_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["index_status"] == "reindexing"

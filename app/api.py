@@ -495,7 +495,7 @@ async def upload_document(
 
 
 @app.delete("/api/v1/documents/{document_id}", status_code=202)
-def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
+async def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
     _ensure_index_idle()
     rag = get_rag()
     resolved = resolve_document(DEFAULT_CONFIG.data_path, document_id)
@@ -509,7 +509,7 @@ def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
 
 
 @app.post("/api/v1/documents/reindex", status_code=202)
-def reindex_documents(user_id: str = Depends(get_current_user)):
+async def reindex_documents(user_id: str = Depends(get_current_user)):
     _ensure_index_idle()
     rag = get_rag()
     if "*" not in _user_departments(rag, user_id):
