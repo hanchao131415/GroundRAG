@@ -24,7 +24,7 @@ const dict: Record<Lang, Record<string, string>> = {
     generating: '生成中…',
     chat_empty: '试试问「工作满3年年假几天」「住宿费报销上限」「密码多久换一次」',
     kb_title: '知识库管理', kb_subtitle: '上传文档并跟踪索引状态', upload: '上传文档', upload_hint: '支持 PDF / DOCX / MD / TXT / XLSX，单文件不超过 20 MB',
-    index_ready: '索引就绪', index_indexing: '正在索引', index_error: '索引异常', document: '文档', department: '部门', size: '大小', actions: '操作', delete: '删除', reindex: '重建索引', no_documents: '暂无文档', confirm_delete: '确认删除',
+    index_ready: '索引就绪', index_reindexing: '后台重建中', index_degraded: '索引降级', index_initializing: '正在初始化', index_error: '索引异常', document: '文档', department: '部门', size: '大小', actions: '操作', delete: '删除', reindex: '重建索引', no_documents: '暂无文档', confirm_delete: '确认删除',
 
     // MessageBubble
     assistant_loading: '…',
@@ -81,7 +81,7 @@ const dict: Record<Lang, Record<string, string>> = {
     generating: 'Generating…',
     chat_empty: 'Try "工作满3年年假几天" / "住宿费报销上限" / "密码多久换一次"',
     kb_title: 'Knowledge Base', kb_subtitle: 'Upload documents and track indexing', upload: 'Upload document', upload_hint: 'PDF / DOCX / MD / TXT / XLSX, up to 20 MB',
-    index_ready: 'Index ready', index_indexing: 'Indexing', index_error: 'Index error', document: 'Document', department: 'Department', size: 'Size', actions: 'Actions', delete: 'Delete', reindex: 'Reindex', no_documents: 'No documents', confirm_delete: 'Delete',
+    index_ready: 'Index ready', index_reindexing: 'Reindexing in background', index_degraded: 'Index degraded', index_initializing: 'Initializing', index_error: 'Index error', document: 'Document', department: 'Department', size: 'Size', actions: 'Actions', delete: 'Delete', reindex: 'Reindex', no_documents: 'No documents', confirm_delete: 'Delete',
 
     // MessageBubble
     assistant_loading: '…',
