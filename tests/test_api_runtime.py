@@ -42,6 +42,19 @@ def test_ready_returns_503_while_initializing(monkeypatch):
     assert response.json()["detail"]["status"] == "initializing"
 
 
+def test_ready_reports_indexing_even_when_old_rag_is_available(monkeypatch):
+    from app import api
+
+    monkeypatch.setattr(api, "_rag", object())
+    monkeypatch.setattr(api, "_rag_status", "indexing")
+    monkeypatch.setattr(api, "_rag_error", None)
+
+    response = TestClient(api.app).get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["status"] == "indexing"
+
+
 def test_search_returns_structured_503_when_rag_failed(monkeypatch):
     from app import api
 

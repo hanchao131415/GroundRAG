@@ -42,6 +42,8 @@ FastAPI ── EnterpriseRAGSystem.ask_stream()
 - **Streaming Chat + Citations** — Typed SSE events (`sources` → `token` → `trace` → `done`). Every answer cites source documents with file name, page number, department badge, and relevance score. `ask()` and `ask_stream()` share the same decision helpers (DRY).
 - **Full-pipeline Trace** — Intent routing → query rewrite → retrieval → generation. Each step records: ms (μs precision for sub-ms steps), token usage (prompt/completion/total), estimated cost in USD. Collapsible `TracePanel` in the UI.
 - **Bilingual UI** — 30 i18n keys covering all UI chrome. Chinese/English toggle in header. Language persisted in localStorage.
+- **Knowledge Base Console** — Upload, list, and delete PDF/DOCX/Markdown/TXT/XLSX documents with department scope, index-status polling, and admin-triggered background reindexing.
+- **Production-style Runtime** — Lightweight liveness and structured readiness probes, background model initialization, bounded SSE backpressure, client disconnect cancellation, and atomic filesystem writes.
 - **One-command Deploy** — Multi-stage Dockerfile (node frontend → python runtime). `bge-small-zh` + `bge-reranker-base` pre-downloaded at build time → zero cold start.
 
 ## Quick Start
@@ -91,7 +93,12 @@ cd web && npm run dev         # http://localhost:5173 (HMR)
 | `POST` | `/api/v1/chat` | JWT | Chat: `stream:true` -> typed SSE, `stream:false` -> JSON |
 | `POST` | `/api/v1/search` | JWT | Pure retrieval (no LLM) |
 | `GET` | `/api/v1/stats` | JWT | KB metrics (docs, chunks, dept distribution, cache) |
-| `GET` | `/health` | -- | Health check |
+| `GET/POST` | `/api/v1/documents` | JWT | List or upload department-scoped documents |
+| `DELETE` | `/api/v1/documents/{id}` | JWT | Delete an authorized document and schedule reindexing |
+| `POST` | `/api/v1/documents/reindex` | Admin | Trigger a full background reindex |
+| `GET` | `/api/v1/index-status` | JWT | Read indexing state and last error |
+| `GET` | `/health` | -- | Lightweight process liveness (does not load models) |
+| `GET` | `/ready` | -- | Structured readiness; returns `503` while loading/indexing |
 
 ## Tech Stack
 
@@ -103,8 +110,8 @@ cd web && npm run dev         # http://localhost:5173 (HMR)
 | **BM25** | `rank_bm25` + jieba tokenizer |
 | **Reranker** | `bge-reranker-base` (transformers-native, Windows-safe) |
 | **LLM** | DeepSeek v4 / Zhipu GLM / Anthropic (protocol-adaptive factory) |
-| **Frontend** | React 18, TypeScript, Vite 5, Tailwind CSS 3 |
-| **Testing** | pytest (43 tests), Vitest + RTL (5 tests) |
+| **Frontend** | React 19, TypeScript 6, Vite 8, Tailwind CSS 3 |
+| **Testing** | pytest (66 tests), Vitest + RTL (10 tests) |
 | **Trace** | Custom Tracer -> JSONL; Langfuse (optional) |
 | **Deploy** | Docker multi-stage, docker-compose |
 
@@ -139,7 +146,7 @@ GroundRAG/
 │   └── logging_config.py          # Structured logging
 ├── web/                    # React SPA
 │   └── src/
-│       ├── views/          # ChatView, SearchView, StatsView
+│       ├── views/          # Chat, Search, Stats, KnowledgeBase views
 │       ├── components/     # UserSwitcher, ChatWindow, MessageBubble,
 │       │                   #   SourceCard, TracePanel, SearchResults
 │       ├── hooks/          # useAuth, useSSEChat
@@ -149,7 +156,7 @@ GroundRAG/
 ├── data/
 │   ├── docs/               # 11 sample docs (5 depts, 3k-5k chars each)
 │   └── users.json
-├── tests/                  # 43 pytest + 5 vitest
+├── tests/                  # 66 pytest + 10 vitest
 ├── evaluation/             # Retrieval sweep + A/B comparison
 ├── scripts/                # make_sample_docs.py
 ├── Dockerfile              # Multi-stage (node + python, non-root)

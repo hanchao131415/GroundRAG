@@ -41,7 +41,7 @@ setup_logging()
 # HTTPException：抛出后自动转成 HTTP 错误响应（如 401/500）
 # Request：原始请求对象（slowapi 限流需要它来取客户端 IP）
 # Depends：FastAPI 依赖注入，用于把"鉴权"做成可复用依赖
-from fastapi import FastAPI, HTTPException, Query, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, Request, Depends, File, UploadFile
 # StreamingResponse：把一个"逐块产出数据"的生成器转成 HTTP 流式响应（SSE 用）
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 # BaseModel/Field：Pydantic 数据模型，请求体进来会被自动校验（少传/多传/类型错都会报错）
@@ -57,6 +57,13 @@ from slowapi.errors import RateLimitExceeded
 from config import DEFAULT_CONFIG                # 全局配置（含 jwt_secret、jwt_expire_hours）
 from main import EnterpriseRAGSystem             # RAG 主系统（检索+生成的大管家）
 from app.auth import create_access_token, get_current_user  # JWT 签发 / JWT 校验依赖
+from app.document_service import (
+    MAX_UPLOAD_BYTES,
+    delete_document,
+    list_documents,
+    resolve_document,
+    save_upload,
+)
 
 # 本文件的日志器（日志会带 api. 前缀，方便在日志里定位是 Web 层还是后端层）
 logger = logging.getLogger(__name__)
@@ -139,6 +146,7 @@ _rag: EnterpriseRAGSystem = None
 _rag_status = "initializing"
 _rag_error: str | None = None
 _init_task: asyncio.Task | None = None
+_reindex_task: asyncio.Task | None = None
 
 
 def _initialize_rag_sync() -> EnterpriseRAGSystem:
@@ -165,6 +173,43 @@ async def _initialize_rag():
         _rag_error = "RAG initialization failed"
 
 
+async def _rebuild_rag():
+    global _rag, _rag_status, _rag_error
+    try:
+        _rag_status = "indexing"
+        new_rag = await asyncio.to_thread(_initialize_rag_sync)
+        _rag = new_rag
+        _rag_status = "ready"
+        _rag_error = None
+    except Exception:
+        logger.exception("知识库重建失败")
+        _rag_status = "error"
+        _rag_error = "Knowledge base rebuild failed"
+
+
+def _schedule_reindex():
+    global _reindex_task, _rag_status, _rag_error
+    if _reindex_task and not _reindex_task.done():
+        raise HTTPException(status_code=409, detail={"code": "INDEX_BUSY", "message": "Indexing is already running"})
+    _rag_status = "indexing"
+    _rag_error = None
+    _reindex_task = asyncio.create_task(_rebuild_rag())
+
+
+def _ensure_index_idle():
+    if _reindex_task and not _reindex_task.done():
+        raise HTTPException(status_code=409, detail={"code": "INDEX_BUSY", "message": "Indexing is already running"})
+
+
+def _user_departments(rag: EnterpriseRAGSystem, user_id: str) -> set[str]:
+    return set(rag.user_service.get_departments(user_id) or [])
+
+
+def _require_department(departments: set[str], department: str):
+    if "*" not in departments and department not in departments:
+        raise HTTPException(status_code=403, detail={"code": "DOCUMENT_FORBIDDEN", "message": "Department access denied"})
+
+
 def get_rag() -> EnterpriseRAGSystem:
     """Return the ready singleton or a structured service-unavailable error."""
     if _rag is None:
@@ -177,6 +222,17 @@ def get_rag() -> EnterpriseRAGSystem:
             },
         )
     return _rag
+
+
+def _raise_not_ready():
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "code": "RAG_NOT_READY",
+            "status": _rag_status,
+            "message": _rag_error or f"RAG is {_rag_status}",
+        },
+    )
 
 
 class SSEBridge:
@@ -255,6 +311,8 @@ def health():
 
 @app.get("/ready")
 def ready():
+    if _rag_status != "ready":
+        _raise_not_ready()
     rag = get_rag()
     return {
         "status": "ready",
@@ -404,6 +462,63 @@ def stats(user_id: str = Depends(get_current_user)):
         # 缓存统计（命中率等，反映热度与成本节约）
         "cache": rag.cache.stats() if rag.cache else {},
     }
+
+
+@app.get("/api/v1/documents")
+def documents(user_id: str = Depends(get_current_user)):
+    rag = get_rag()
+    departments = _user_departments(rag, user_id)
+    records = list_documents(DEFAULT_CONFIG.data_path, departments)
+    return {"documents": [record.as_dict() for record in records]}
+
+
+@app.post("/api/v1/documents", status_code=202)
+async def upload_document(
+    department: str = Query(..., min_length=1, max_length=64),
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user),
+):
+    _ensure_index_idle()
+    rag = get_rag()
+    _require_department(_user_departments(rag, user_id), department)
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        record = save_upload(DEFAULT_CONFIG.data_path, file.filename or "", content, department)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EXISTS", "message": "Document already exists"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"code": "DOCUMENT_INVALID", "message": str(e)})
+    _schedule_reindex()
+    return {"document": record.as_dict(), "index_status": "indexing"}
+
+
+@app.delete("/api/v1/documents/{document_id}", status_code=202)
+def remove_document(document_id: str, user_id: str = Depends(get_current_user)):
+    _ensure_index_idle()
+    rag = get_rag()
+    resolved = resolve_document(DEFAULT_CONFIG.data_path, document_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail={"code": "DOCUMENT_NOT_FOUND", "message": "Document not found"})
+    _, record = resolved
+    _require_department(_user_departments(rag, user_id), record.department)
+    delete_document(DEFAULT_CONFIG.data_path, document_id)
+    _schedule_reindex()
+    return {"document": record.as_dict(), "index_status": "indexing"}
+
+
+@app.post("/api/v1/documents/reindex", status_code=202)
+def reindex_documents(user_id: str = Depends(get_current_user)):
+    _ensure_index_idle()
+    rag = get_rag()
+    if "*" not in _user_departments(rag, user_id):
+        raise HTTPException(status_code=403, detail={"code": "ADMIN_REQUIRED", "message": "Admin access required"})
+    _schedule_reindex()
+    return {"index_status": "indexing"}
+
+
+@app.get("/api/v1/index-status")
+def index_status(user_id: str = Depends(get_current_user)):
+    return {"status": _rag_status, "error": _rag_error}
 
 
 # ---- 前端静态托管（方案 A：FastAPI 服务 web/dist）----

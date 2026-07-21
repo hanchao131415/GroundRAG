@@ -1,4 +1,4 @@
-import type { DemoUser, SSEEvent } from '../types'
+import type { DemoUser, DocumentRecord, SSEEvent } from '../types'
 import { parseSSEChunk } from './sse'
 
 let _token: string | null = localStorage.getItem('groundrag_token')
@@ -76,6 +76,38 @@ export async function search(question: string, top_k = 3): Promise<SearchResult[
 
 export async function getStats(): Promise<Record<string, unknown>> {
   const r = await fetch('/api/v1/stats', { headers: authHeaders() })
+  if (!r.ok) await throwApiError(r)
+  return r.json()
+}
+
+export async function getDocuments(): Promise<DocumentRecord[]> {
+  const r = await fetch('/api/v1/documents', { headers: authHeaders() })
+  if (!r.ok) await throwApiError(r)
+  return (await r.json()).documents
+}
+
+export async function uploadDocument(file: File, department: string): Promise<DocumentRecord> {
+  const form = new FormData()
+  form.append('file', file)
+  const r = await fetch(`/api/v1/documents?department=${encodeURIComponent(department)}`, {
+    method: 'POST', headers: authHeaders(), body: form,
+  })
+  if (!r.ok) await throwApiError(r)
+  return (await r.json()).document
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  const r = await fetch(`/api/v1/documents/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() })
+  if (!r.ok) await throwApiError(r)
+}
+
+export async function reindexDocuments(): Promise<void> {
+  const r = await fetch('/api/v1/documents/reindex', { method: 'POST', headers: authHeaders() })
+  if (!r.ok) await throwApiError(r)
+}
+
+export async function getIndexStatus(): Promise<{ status: string; error: string | null }> {
+  const r = await fetch('/api/v1/index-status', { headers: authHeaders() })
   if (!r.ok) await throwApiError(r)
   return r.json()
 }

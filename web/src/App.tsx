@@ -2,15 +2,18 @@ import { useState } from 'react'
 import { ChatView } from './views/ChatView'
 import { SearchView } from './views/SearchView'
 import { StatsView } from './views/StatsView'
+import { KnowledgeBaseView } from './views/KnowledgeBaseView'
 import { LangProvider, useLang, LanguageToggle } from './i18n'
+import { useAuth } from './hooks/useAuth'
 
-type View = 'chat' | 'search' | 'stats'
+type View = 'chat' | 'search' | 'stats' | 'knowledge'
 
 function Shell() {
   const { t } = useLang()
+  const { demoUsers, currentUser, loginAs } = useAuth()
   const [view, setView] = useState<View>('chat')
   const tabs: { id: View; key: string }[] = [
-    { id: 'chat', key: 'nav_chat' }, { id: 'search', key: 'nav_search' }, { id: 'stats', key: 'nav_stats' },
+    { id: 'chat', key: 'nav_chat' }, { id: 'search', key: 'nav_search' }, { id: 'stats', key: 'nav_stats' }, { id: 'knowledge', key: 'nav_knowledge' },
   ]
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -30,9 +33,10 @@ function Shell() {
         </div>
       </header>
       <main>
-        {view === 'chat' && <ChatView />}
+        {view === 'chat' && <ChatView demoUsers={demoUsers} currentUser={currentUser} loginAs={loginAs} />}
         {view === 'search' && <SearchView />}
         {view === 'stats' && <StatsView />}
+        {view === 'knowledge' && <KnowledgeBaseView demoUsers={demoUsers} currentUser={currentUser} loginAs={loginAs} />}
       </main>
     </div>
   )

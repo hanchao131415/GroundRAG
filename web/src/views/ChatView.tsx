@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 import { ChatWindow } from '../components/ChatWindow'
 import { UserSwitcher } from '../components/UserSwitcher'
-import { useAuth } from '../hooks/useAuth'
 import { useSSEChat } from '../hooks/useSSEChat'
 import { useLang } from '../i18n'
 
-export function ChatView() {
+import type { DemoUser } from '../types'
+
+export function ChatView({ demoUsers, currentUser, loginAs }: { demoUsers: DemoUser[]; currentUser: DemoUser | null; loginAs: (id: string | null) => Promise<void> }) {
   const { t } = useLang()
-  const { demoUsers, currentUser, loginAs } = useAuth()
   const { messages, ask, asking, stop, clear } = useSSEChat()
 
   // 切换用户时清空对话，避免跨用户串内容
