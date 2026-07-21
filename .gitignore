@@ -35,6 +35,7 @@ Thumbs.db
 
 # SDD scratch
 .superpowers/
+.worktrees/
 
 # Internal dev docs (not for public showcase)
 docs/
@@ -42,4 +43,3 @@ docs/
 # Logs
 *.log
 .pytest_cache/
-
